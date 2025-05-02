@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
 from gazebo_sim.launch_arguments.robot import RobotArgs
-from gazebo_sim.launch.launch_utils import spawn_goal_entity
 
 from launch_ros.actions import RosTimer
 
@@ -48,10 +47,6 @@ def generate_launch_description():
     launch_arguments = LaunchArguments()
 
     launch_arguments.add_to_launch_description(ld)
-    spawn_goal = spawn_goal_entity(
-        x=LaunchConfiguration("goal_x"),
-        y=LaunchConfiguration("goal_y"),
-    )
 
     # Include the launch description for the Gazebo simulation
 
@@ -76,34 +71,5 @@ def generate_launch_description():
         },
     )
     ld.add_action(jackal_gazebo)
-    ld.add_action(spawn_goal)
-    # Add the event handler to spawn the goal entity when the Gazebo process starts
-    ld.add_action(
-        RegisterEventHandler(
-            # event_handler=OnProcessStart(
-            #     target_action=jackal_gazebo,
-            #     on_start=[
-            #         LogInfo(msg="Gazebo process started, spawning goal entity..."),
-            #         RosTimer(
-            #             period=0.1,
-            #             actions=[spawn_goal],
-            #         ),
-            #     ],
-            # )
-            OnProcessIO(
-                on_stdout=lambda event: (
-                    [
-                        RosTimer(
-                            period=0.1,
-                            actions=[spawn_goal],
-                        ),
-                        LogInfo(msg="Gazebo process started, spawning goal entity..."),
-                    ]
-                    if b"Gazebo started" in event.text
-                    else []
-                ),
-            )
-        )
-    )
 
     return ld

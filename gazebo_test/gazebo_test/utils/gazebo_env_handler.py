@@ -2,7 +2,13 @@ import asyncio
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
 
-from gazebo_msgs.srv import SetEntityState, SpawnEntity, DeleteEntity
+from gazebo_msgs.srv import (
+    SetEntityState,
+    SpawnEntity,
+    DeleteEntity,
+    GetEntityState,
+    GetModelList,
+)
 from gazebo_msgs.msg import EntityState
 from std_srvs.srv import Empty
 from geometry_msgs.msg import Pose
@@ -43,6 +49,18 @@ class GazeboEnvironmentHandler:
             "/delete_entity",
             callback_group=MutuallyExclusiveCallbackGroup(),
         )
+
+        self.get_entity_state_client = self.node.create_client(
+            GetEntityState,
+            "test/get_entity_state",
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
+
+        self.get_model_list_client = self.node.create_client(
+            GetModelList,
+            "/get_model_list",
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
         self.get_logger = self.node.get_logger
         self.get_logger().info("GazeboEnvironmentHandler initialized")
 
@@ -65,6 +83,7 @@ class GazeboEnvironmentHandler:
             self.set_entity_state_client,
             self.spawn_entity_client,
             self.delete_entity_client,
+            self.get_entity_state_client,
         ]
         for client in services:
             while not client.wait_for_service(timeout_sec=1.0):
@@ -136,7 +155,7 @@ class GazeboEnvironmentHandler:
         req.xml = entity_xml
         req.robot_namespace = robot_namespace if robot_namespace else ""
         req.initial_pose = initial_pose if initial_pose else Pose()
-        req.reference_frame = reference_frame if reference_frame else "world"
+        req.reference_frame = reference_frame if reference_frame else ""
         try:
             response = await self.spawn_entity_client.call_async(req)
             if response.success:
@@ -215,7 +234,9 @@ class GazeboEnvironmentHandler:
                 self.get_logger().error(f"on_done callback raised an exception: {e}")
         return results
 
-    async def reset_environment_for_experiment(self, entities: List[EntityState]):
+    async def reset_environment_for_experiment(
+        self, entities: List[EntityState], goal_entity: EntityState, goal_xml: str
+    ) -> bool:
         """
         Resets the Gazebo environment.
         """
@@ -224,14 +245,25 @@ class GazeboEnvironmentHandler:
         if not pause_success:
             self.get_logger().error("Failed to pause Gazebo environment")
             return False
-        # reset_success = await self.reset_the_world()
-        # if not reset_success:
-        #     self.get_logger().error("Failed to reset Gazebo environment")
-        #     return False
+
+        # delete the goal entity if it exists
+        while await self.check_entities_in_world([goal_entity.name]):
+            await self.delete_entity(goal_entity.name)
+        # spawn the goal entity
+        reset_success = await self.reset_the_world()
+        if not reset_success:
+            self.get_logger().error("Failed to reset Gazebo environment")
+            return False
         set_entity_success = await self.set_entities_state(entities)
         if not set_entity_success:
             self.get_logger().error("Failed to set entities state")
             return False
+        while not await self.check_entities_in_world([goal_entity.name]):
+            await self.spawn_entity(
+                entity_name=goal_entity.name,
+                entity_xml=goal_xml,
+                initial_pose=goal_entity.pose,
+            )
         resume_success = await self.resume_gazebo()
         if not resume_success:
             self.get_logger().error("Failed to resume Gazebo environment")
@@ -240,3 +272,65 @@ class GazeboEnvironmentHandler:
         self.get_logger().info("experiment reset successfully")
 
         return True
+
+    async def get_entity_state(
+        self,
+        entity_name: str,
+    ) -> EntityState:
+        """
+        Asynchronously get the state of an entity in Gazebo.
+        Args:
+            entity_name (str): Name of the entity to get state for.
+        Returns:
+            EntityState: The state of the entity.
+        Raises:
+            ValueError: If the entities list is empty.
+        """
+
+        if not entity_name:
+            raise ValueError("Entity name must not be empty.")
+        self.get_logger().info(f"Getting state for {entity_name} in Gazebo")
+        req = GetEntityState.Request()
+        req.name = entity_name
+        try:
+            response = await self.get_entity_state_client.call_async(req)
+            if response.success:
+                self.get_logger().info("Entity state retrieved successfully")
+                return response.state
+            else:
+                self.get_logger().error("Failed to get entity state")
+        except Exception as e:
+            self.get_logger().error(f"Failed to get entity state: {e}")
+            return None
+        return None
+
+    async def check_entities_in_world(self, entities_name: List[str]) -> bool:
+        """
+        Check if multiple entities are in the Gazebo world.
+        Args:
+            entities_name (List[str]): List of entity names to check.
+        Returns:
+            bool: True if the entity is in the world, False otherwise.
+        """
+        if not entities_name or not isinstance(entities_name, list):
+            raise ValueError("Entity name must not be empty and must be a list.")
+        self.get_logger().info(f"Checking if {entities_name} are in the world")
+        req = GetModelList.Request()
+
+        try:
+            response = await self.get_model_list_client.call_async(req)
+            if response.success:
+                for entity_name in entities_name:
+                    if entity_name not in response.model_names:
+                        self.get_logger().info(
+                            f"Entity '{entity_name}' is not in the world"
+                        )
+                        return False
+                self.get_logger().info("All entities are in the world")
+                return True
+            else:
+                self.get_logger().error("Failed to get model list")
+        except Exception as e:
+            self.get_logger().error(f"Failed to check entity in world: {e}")
+            return False
+        return False

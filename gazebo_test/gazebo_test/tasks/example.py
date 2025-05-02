@@ -9,12 +9,10 @@ from rclpy.task import Future
 from geometry_msgs.msg import Pose
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-import asyncio
 from tf_transformations import quaternion_from_euler
 import time
 
-# import yaw to quaternion
-
+from ament_index_python.packages import get_package_share_directory
 
 import yaml
 
@@ -31,11 +29,20 @@ class ExperimentManager(Node):
         self.agent_entities: Dict[str, EntityState] = {}
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
+        self.goal_name: str = "goal_box"
 
         self.parse_entity_state_yaml(
             Path(
-                "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_test/goals_and_poses/social_nav.yaml"
+                f"{get_package_share_directory('gazebo_test')}/goals_and_poses/social_nav.yaml"
             )
+        )
+
+        self.goal_box_xml = (
+            Path(
+                f"{get_package_share_directory('gazebo_sim')}/models/goal_box/model.sdf"
+            )
+            .open("r")
+            .read()
         )
         self.end = False
         self.get_logger().info("ExperimentManager initialized")
@@ -45,7 +52,26 @@ class ExperimentManager(Node):
         self.get_logger().info("Initializing experiment ...")
         # Initialize the experiment manager
         await self.gazebo_env_handler.wait_for_gazebo_ready()
+        # check if there is the entity in the world
+        # if not, spawn the entity
+
         await self.gazebo_env_handler.pause_gazebo()
+        # while not await self.gazebo_env_handler.check_entities_in_world(
+        #     [self.goal_name]
+        # ):
+        #     await self.gazebo_env_handler.spawn_entity(
+        #         entity_name=self.goal_name,
+        #         entity_xml=self.goal_box_xml,
+        #         initial_pose=self.goal_entities["episode_1"].pose,
+        #     )
+        agent_entities = await self.gazebo_env_handler.check_entities_in_world(
+            list(self.agent_entities.keys())
+        )
+        if not agent_entities:
+            raise ValueError(
+                f"Agent entities {list(self.agent_entities.keys())} not found in the world"
+            )
+        self.get_logger().info("All entities are in the world")
 
     async def run_experiments(self):
         """
@@ -70,16 +96,18 @@ class ExperimentManager(Node):
 
         entities_to_reset = [
             self.initial_state_entities[episode],
-            self.goal_entities[episode],
+            # self.goal_entities[episode],
         ] + list(self.agent_entities.values())
 
         await self.gazebo_env_handler.reset_environment_for_experiment(
-            entities_to_reset
+            entities_to_reset,
+            goal_entity=self.goal_entities[episode],
+            goal_xml=self.goal_box_xml,
         )
 
         self.get_logger().info("Environment reset successfully")
 
-        time.sleep(10)  # Placeholder for waiting logic
+        time.sleep(5)  # Placeholder for waiting logic
 
         # Syncronously wait for the environment to be ready
 
@@ -126,19 +154,18 @@ class ExperimentManager(Node):
         poses = data.get("poses", {})
         agents = data.get("agents", {})
 
-        reference_frame = data.get("reference_frame", "map")
         robot_name = data.get("robot_name", "robot")
+        self.goal_name = data.get("goal_name", "goal_box")
 
         for episode in episodes:
             goal = goals.get(episode, [])
             pose = poses.get(episode, [])
 
             goal_entity = EntityState()
-            goal_entity.name = f"goal"
+            goal_entity.name = self.goal_name
             goal_entity.pose = Pose()
             goal_entity.pose.position.x = goal[0]
             goal_entity.pose.position.y = goal[1]
-            # goal_entity.reference_frame = reference_frame
 
             initial_state_entity = EntityState()
             initial_state_entity.name = robot_name
@@ -155,7 +182,6 @@ class ExperimentManager(Node):
             initial_state_entity.pose.orientation.z = quaternion[2]
             initial_state_entity.pose.orientation.w = quaternion[3]
             # Reference frame
-            # initial_state_entity.reference_frame = reference_frame
 
             self.goal_entities[episode] = goal_entity
             self.initial_state_entities[episode] = initial_state_entity
@@ -175,7 +201,6 @@ class ExperimentManager(Node):
             agent_entity.pose.orientation.z = quaternion[2]
             agent_entity.pose.orientation.w = quaternion[3]
             # Reference frame
-            # agent_entity.reference_frame = reference_frame
 
             self.agent_entities[key] = agent_entity
 

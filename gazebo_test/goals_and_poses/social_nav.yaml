@@ -1,5 +1,6 @@
 # filepath: /workspaces/hunavsim_ws/src/gazebo_test/gazebo_test/goals_and_poses/social_nav.yaml
 robot_name: "jackal" # The name of the robot
+goal_name: "goal_box" # The name of the goal
 initial_pose: [9.0, 9.0, -3.140] # Initial pose of the robot x, y, theta
 
 episodes: # episodes to be run
