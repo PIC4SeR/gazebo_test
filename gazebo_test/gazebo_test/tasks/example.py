@@ -47,12 +47,27 @@ class ExperimentManager(Node):
         await self.gazebo_env_handler.wait_for_gazebo_ready()
         await self.gazebo_env_handler.pause_gazebo()
 
-    async def run_experiment(self):
+    async def run_experiments(self):
+        """
+        Run the experiments sequentially.
+        This method will run the experiments for each episode defined in the YAML file.
+        """
+        self.get_logger().info("Running experiments ...")
+        for episode in self.initial_state_entities.keys():
+            await self.run_experiment(episode)
+
+    async def run_experiment(self, episode: str = "episode_1"):
+        """
+        Run the experiment for a given episode.
+        Args:
+            episode (str): The episode to run.
+        """
+        self.get_logger().info(f"Running experiment for {episode} ...")
+
         # Placeholder for experiment running logic
         self.get_logger().info("Running experiment...")
         # reset the environment
 
-        episode = "episode_1"  # Placeholder for the episode name
         entities_to_reset = [
             self.initial_state_entities[episode],
             self.goal_entities[episode],

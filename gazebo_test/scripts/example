@@ -15,16 +15,13 @@ async def run(exp_menager: ExperimentManager):
 
     while exp_menager.end is False:
         exp_menager.get_logger().info("Waiting for experiment to finish...")
-        # await loop.create_task(exp_menager.initialize())
         future_initialize = exp_menager.initialize()
         await future_initialize
 
         exp_menager.get_logger().info("Experiment initialized")
-        # await loop.create_task(exp_menager.run_experiment())
-        future_run_experiment = exp_menager.run_experiment()
+        future_run_experiment = exp_menager.run_experiments()
         await future_run_experiment
         exp_menager.get_logger().info("Experiment finished")
-        # await loop.create_task(exp_menager.gazebo_env_handler.pause_gazebo())
 
 
 def main():
