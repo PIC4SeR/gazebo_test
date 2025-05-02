@@ -996,38 +996,6 @@ class Pic4rlEnvironmentAdascore(Node):
             time.sleep(2.0)
         return
 
-    def send_get_request_controller(self):
-        self.get_req_controller.names = [
-            "FollowPath.social_weight",
-            "FollowPath.costmap_weight",
-            "FollowPath.velocity_weight",
-            "FollowPath.angle_weight",
-            "FollowPath.distance_weight",
-        ]
-        future = self.get_cli_controller.call_async(self.get_req_controller)
-        return future
-
-    def get_controller_params(
-        self,
-    ):
-        future = self.send_get_request_controller()
-        rclpy.spin_until_future_complete(self, future)
-        try:
-            get_response = future.result()
-            self.get_logger().info(
-                "Result %s %s %s %s %s %s %s"
-                % (
-                    get_response.values[0].double_value,
-                    get_response.values[1].double_value,
-                    get_response.values[2].integer_value,
-                    get_response.values[3].integer_value,
-                    get_response.values[4].double_value,
-                )
-            )
-
-        except Exception as e:
-            self.get_logger().info("Service call failed %r" % (e,))
-
     def create_clients(
         self,
     ):
@@ -1060,29 +1028,6 @@ class Pic4rlEnvironmentAdascore(Node):
     def local_goal_callback(self, msg):
         self.local_goal_pose = [msg.pose.position.x, msg.pose.position.y]
 
-    def print_path_to_goal(self, path_to_goal):
-        # print paths dict to file
-
-        poses = []
-        # check if path not empty
-        if not isinstance(path_to_goal, path_msg):
-            print("Empty Path received...")
-
-        else:
-            for pose in path_to_goal.poses:
-                x_pose = pose.pose.position.x
-                y_pose = pose.pose.position.y
-                poses.append([x_pose, y_pose])
-
-        self.paths_dict.update({"Ep" + str(self.episode) + "_poses": poses})
-        json_paths = json.dumps(self.paths_dict, indent=2)
-
-        self.get_logger().info("printing path to file...")
-
-        # Writing to json file
-        with open(self.saved_paths_path, "w") as outfile:
-            outfile.write(json_paths)
-
     def call_hunav_service(self, stop):
         req = Trigger.Request()
         while not self.hunav_trigger_recording_client.wait_for_service(timeout_sec=1.0):
@@ -1095,11 +1040,7 @@ class Pic4rlEnvironmentAdascore(Node):
         )
         future = self.hunav_trigger_recording_client.call_async(req)
         self.get_logger().info(f"Waiting for response...")
-        # return True
-        # if not stop:
-        #     rclpy.spin_until_future_complete(self, future)
-        # else:
-        #     return True
+
         rclpy.spin_until_future_complete(self, future)
         self.get_logger().info(f"Response received...")
         if future.result() is not None:

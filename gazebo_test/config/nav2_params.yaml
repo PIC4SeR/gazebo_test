@@ -152,6 +152,13 @@ controller_server:
       # RotateToGoal.slowing_factor: 5.0
       # RotateToGoal.lookahead_time: -1.0
       # SocialForceCritic.scale: 0.5
+      SocialForceCritic.fov_angle: 1.57
+      SocialForceCritic.robot_radius: 0.24
+      SocialForceCritic.person_radius: 0.25
+      SocialForceCritic.person_velocity: 0.5
+      SocialForceCritic.naive_goal_time: 0.5
+      SocialForceCritic.new_resolution: 0.2
+      SocialForceCritic.max_vel_x: 0.6
 
 local_costmap:
   local_costmap:

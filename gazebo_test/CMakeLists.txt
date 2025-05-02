@@ -44,6 +44,13 @@ install(DIRECTORY
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
+# Install Python scripts
+install(PROGRAMS
+  scripts/example
+  scripts/example2
+  scripts/example3
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 ament_package()

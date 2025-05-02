@@ -18,36 +18,136 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
 from nav2_common.launch import RewrittenYaml
+from gazebo_test.launch_arguments.navigation import NavigationArgs
+from gazebo_sim.launch_arguments.common import GazeboCommonArgs
+from gazebo_sim.launch.launch_utils import parse_launch_config_value
+from launch_pal.arg_utils import LaunchArgumentsBase
+from dataclasses import dataclass
+from launch.actions import OpaqueFunction
+
+
+@dataclass(frozen=True)
+class LaunchArguments(LaunchArgumentsBase):
+    namespace: DeclareLaunchArgument = GazeboCommonArgs.namespace
+    map: DeclareLaunchArgument = NavigationArgs.map
+    use_sim_time: DeclareLaunchArgument = GazeboCommonArgs.use_sim_time
+    autostart: DeclareLaunchArgument = NavigationArgs.autostart
+    params_file: DeclareLaunchArgument = NavigationArgs.params_file
+    use_composition: DeclareLaunchArgument = NavigationArgs.use_composition
+    container_name: DeclareLaunchArgument = NavigationArgs.container_name
+    use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
+    log_level: DeclareLaunchArgument = NavigationArgs.log_level
+    only_planning: DeclareLaunchArgument = NavigationArgs.only_planning
+
+
+def lifecycle_nodes(context, *args, **kwargs):
+    """Return the list of lifecycle nodes to be launched."""
+    # convert to bool
+    # only_planning = PythonExpression(
+    #     ["'", context.launch_configurations["only_planning"].lower(), "' == 'true'"]
+    # ).perform(context)
+    # use_composition = PythonExpression(
+    #     [
+    #         "'",
+    #         context.launch_configurations["use_composition"].lower(),
+    #         "' == 'true'",
+    #     ]
+    # ).perform(context)
+    # use_sim_time = PythonExpression(
+    #     ["'", context.launch_configurations["use_sim_time"].lower(), "' == 'true'"]
+    # ).perform(context)
+
+    # autostart = PythonExpression(
+    #     ["'", context.launch_configurations["autostart"].lower(), "' == 'true'"]
+    # ).perform(context)
+    # log_level = context.launch_configurations["log_level"]
+
+    only_planning = LaunchConfiguration("only_planning")
+    use_composition = LaunchConfiguration("use_composition")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    autostart = LaunchConfiguration("autostart")
+    log_level = LaunchConfiguration("log_level")
+    lifecycle_nodes = [
+        "smoother_server",
+        "planner_server",
+        "map_server",
+    ]
+    if not parse_launch_config_value(only_planning.perform(context)):
+        lifecycle_nodes += [
+            "controller_server",
+            "smoother_server",
+            "planner_server",
+            "behavior_server",
+            "bt_navigator",
+            "velocity_smoother",
+            "map_server",
+        ]
+
+    return [
+        Node(
+            package="nav2_lifecycle_manager",
+            executable="lifecycle_manager",
+            name="lifecycle_manager_navigation",
+            output="screen",
+            condition=UnlessCondition(use_composition),
+            arguments=["--ros-args", "--log-level", log_level.perform(context)],
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                {"autostart": autostart},
+                {"node_names": lifecycle_nodes},
+            ],
+        ),
+        LoadComposableNodes(
+            target_container=LaunchConfiguration("container_name"),
+            condition=IfCondition(use_composition),
+            composable_node_descriptions=[
+                ComposableNode(
+                    package="nav2_lifecycle_manager",
+                    plugin="nav2_lifecycle_manager::LifecycleManager",
+                    name="lifecycle_manager_navigation",
+                    parameters=[
+                        {
+                            "use_sim_time": use_sim_time,
+                            "autostart": autostart,
+                            "node_names": lifecycle_nodes,
+                        }
+                    ],
+                )
+            ],
+        ),
+    ]
 
 
 def generate_launch_description():
     # Get the launch directory
-    bringup_dir = get_package_share_directory('nav2_bringup')
 
-    namespace = LaunchConfiguration('namespace')
-    map_yaml_file = LaunchConfiguration('map')
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    autostart = LaunchConfiguration('autostart')
-    params_file = LaunchConfiguration('params_file')
-    use_composition = LaunchConfiguration('use_composition')
-    container_name = LaunchConfiguration('container_name')
-    container_name_full = (namespace, '/', container_name)
-    use_respawn = LaunchConfiguration('use_respawn')
-    log_level = LaunchConfiguration('log_level')
+    namespace = LaunchConfiguration("namespace")
+    map_yaml_file = LaunchConfiguration("map")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    autostart = LaunchConfiguration("autostart")
+    params_file = LaunchConfiguration("params_file")
+    use_composition = LaunchConfiguration("use_composition")
+    container_name = LaunchConfiguration("container_name")
+    container_name_full = (namespace, "/", container_name)
+    use_respawn = LaunchConfiguration("use_respawn")
+    log_level = LaunchConfiguration("log_level")
+    only_planning = LaunchConfiguration("only_planning")
 
-    lifecycle_nodes = ['controller_server',
-                       'smoother_server',
-                       'planner_server',
-                       'behavior_server',
-                       'bt_navigator',
-                       'velocity_smoother',
-                       'map_server']
+    # lifecycle_nodes = [
+    #     "controller_server",
+    #     "smoother_server",
+    #     "planner_server",
+    #     "behavior_server",
+    #     "bt_navigator",
+    #     "velocity_smoother",
+    #     "map_server",
+    # ]
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -55,148 +155,126 @@ def generate_launch_description():
     # https://github.com/ros/robot_state_publisher/pull/30
     # TODO(orduno) Substitute with `PushNodeRemapping`
     #              https://github.com/ros2/launch_ros/issues/56
-    remappings = [('/tf', 'tf'),
-                  ('/tf_static', 'tf_static')]
+    remappings = [("/tf", "tf"), ("/tf_static", "tf_static")]
 
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {
-        'yaml_filename': map_yaml_file,
-        'use_sim_time': use_sim_time,
-        'autostart': autostart}
+        "yaml_filename": map_yaml_file,
+        "use_sim_time": use_sim_time,
+        "autostart": autostart,
+    }
 
     configured_params = ParameterFile(
         RewrittenYaml(
             source_file=params_file,
             root_key=namespace,
             param_rewrites=param_substitutions,
-            convert_types=True),
-        allow_substs=True)
+            convert_types=True,
+        ),
+        allow_substs=True,
+    )
 
     stdout_linebuf_envvar = SetEnvironmentVariable(
-        'RCUTILS_LOGGING_BUFFERED_STREAM', '1')
-
-    declare_namespace_cmd = DeclareLaunchArgument(
-        'namespace',
-        default_value='',
-        description='Top-level namespace')
-
-    declare_map_yaml_cmd = DeclareLaunchArgument(
-        'map',
-        description='Full path to map yaml file to load')
-
-    declare_use_sim_time_cmd = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation (Gazebo) clock if true')
-
-    declare_params_file_cmd = DeclareLaunchArgument(
-        'params_file',
-        default_value=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
-        description='Full path to the ROS2 parameters file to use for all launched nodes')
-
-    declare_autostart_cmd = DeclareLaunchArgument(
-        'autostart', default_value='true',
-        description='Automatically startup the nav2 stack')
-
-    declare_use_composition_cmd = DeclareLaunchArgument(
-        'use_composition', default_value='False',
-        description='Use composed bringup if True')
-
-    declare_container_name_cmd = DeclareLaunchArgument(
-        'container_name', default_value='nav2_container',
-        description='the name of conatiner that nodes will load in if use composition')
-
-    declare_use_respawn_cmd = DeclareLaunchArgument(
-        'use_respawn', default_value='False',
-        description='Whether to respawn if a node crashes. Applied when composition is disabled.')
-
-    declare_log_level_cmd = DeclareLaunchArgument(
-        'log_level', default_value='info',
-        description='log level')
+        "RCUTILS_LOGGING_BUFFERED_STREAM", "1"
+    )
 
     load_nodes = GroupAction(
-        condition=IfCondition(PythonExpression(['not ', use_composition])),
+        condition=UnlessCondition(use_composition),
         actions=[
             Node(
-                package='nav2_controller',
-                executable='controller_server',
-                output='screen',
+                package="nav2_controller",
+                executable="controller_server",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings + [('cmd_vel', 'cmd_vel_nav')]),
+                arguments=["--ros-args", "--log-level", log_level],
+                condition=UnlessCondition(only_planning),
+                remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
+            ),
             Node(
-                package='nav2_smoother',
-                executable='smoother_server',
-                name='smoother_server',
-                output='screen',
+                package="nav2_smoother",
+                executable="smoother_server",
+                name="smoother_server",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
             Node(
-                package='nav2_planner',
-                executable='planner_server',
-                name='planner_server',
-                output='screen',
+                package="nav2_planner",
+                executable="planner_server",
+                name="planner_server",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
             Node(
-                package='nav2_behaviors',
-                executable='behavior_server',
-                name='behavior_server',
-                output='screen',
+                package="nav2_behaviors",
+                executable="behavior_server",
+                name="behavior_server",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                condition=UnlessCondition(only_planning),
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
             Node(
-                package='nav2_bt_navigator',
-                executable='bt_navigator',
-                name='bt_navigator',
-                output='screen',
+                package="nav2_bt_navigator",
+                executable="bt_navigator",
+                name="bt_navigator",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                arguments=["--ros-args", "--log-level", log_level],
+                condition=UnlessCondition(only_planning),
+                remappings=remappings,
+            ),
             Node(
-                package='nav2_velocity_smoother',
-                executable='velocity_smoother',
-                name='velocity_smoother',
-                output='screen',
+                package="nav2_velocity_smoother",
+                executable="velocity_smoother",
+                name="velocity_smoother",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings +
-                        [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                arguments=["--ros-args", "--log-level", log_level],
+                condition=UnlessCondition(only_planning),
+                remappings=remappings
+                + [("cmd_vel", "cmd_vel_nav"), ("cmd_vel_smoothed", "cmd_vel")],
+            ),
+            # Node(
+            #     package="nav2_lifecycle_manager",
+            #     executable="lifecycle_manager",
+            #     name="lifecycle_manager_navigation",
+            #     output="screen",
+            #     arguments=["--ros-args", "--log-level", log_level],
+            #     parameters=[
+            #         {"use_sim_time": use_sim_time},
+            #         {"autostart": autostart},
+            #         {"node_names": OpaqueFunction(function=lifecycle_nodes)},
+            #     ],
+            # ),
             Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_navigation',
-                output='screen',
-                arguments=['--ros-args', '--log-level', log_level],
-                parameters=[{'use_sim_time': use_sim_time},
-                            {'autostart': autostart},
-                            {'node_names': lifecycle_nodes}]),
-            Node(
-                package='nav2_map_server',
-                executable='map_server',
-                name='map_server',
-                output='screen',
+                package="nav2_map_server",
+                executable="map_server",
+                name="map_server",
+                output="screen",
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
-        ]
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
+        ],
     )
 
     load_composable_nodes = LoadComposableNodes(
@@ -204,77 +282,85 @@ def generate_launch_description():
         target_container=container_name_full,
         composable_node_descriptions=[
             ComposableNode(
-                package='nav2_controller',
-                plugin='nav2_controller::ControllerServer',
-                name='controller_server',
+                package="nav2_controller",
+                plugin="nav2_controller::ControllerServer",
+                name="controller_server",
                 parameters=[configured_params],
-                remappings=remappings + [('cmd_vel', 'cmd_vel_nav')]),
+                remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
+                condition=UnlessCondition(only_planning),
+            ),
             ComposableNode(
-                package='nav2_smoother',
-                plugin='nav2_smoother::SmootherServer',
-                name='smoother_server',
+                package="nav2_smoother",
+                plugin="nav2_smoother::SmootherServer",
+                name="smoother_server",
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings,
+            ),
             ComposableNode(
-                package='nav2_planner',
-                plugin='nav2_planner::PlannerServer',
-                name='planner_server',
+                package="nav2_planner",
+                plugin="nav2_planner::PlannerServer",
+                name="planner_server",
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings,
+            ),
             ComposableNode(
-                package='nav2_behaviors',
-                plugin='behavior_server::BehaviorServer',
-                name='behavior_server',
+                package="nav2_behaviors",
+                plugin="behavior_server::BehaviorServer",
+                name="behavior_server",
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings,
+                condition=UnlessCondition(only_planning),
+            ),
             ComposableNode(
-                package='nav2_bt_navigator',
-                plugin='nav2_bt_navigator::BtNavigator',
-                name='bt_navigator',
+                package="nav2_bt_navigator",
+                plugin="nav2_bt_navigator::BtNavigator",
+                name="bt_navigator",
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings,
+                condition=UnlessCondition(only_planning),
+            ),
             ComposableNode(
-                package='nav2_velocity_smoother',
-                plugin='nav2_velocity_smoother::VelocitySmoother',
-                name='velocity_smoother',
+                package="nav2_velocity_smoother",
+                plugin="nav2_velocity_smoother::VelocitySmoother",
+                name="velocity_smoother",
                 parameters=[configured_params],
-                remappings=remappings +
-                [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                remappings=remappings
+                + [("cmd_vel", "cmd_vel_nav"), ("cmd_vel_smoothed", "cmd_vel")],
+                condition=UnlessCondition(only_planning),
+            ),
             ComposableNode(
-                package='nav2_map_server',
-                plugin='nav2_map_server::MapServer',
-                name='map_server',
+                package="nav2_map_server",
+                plugin="nav2_map_server::MapServer",
+                name="map_server",
                 parameters=[configured_params],
-                remappings=remappings),
-            ComposableNode(
-                package='nav2_lifecycle_manager',
-                plugin='nav2_lifecycle_manager::LifecycleManager',
-                name='lifecycle_manager_navigation',
-                parameters=[{'use_sim_time': use_sim_time,
-                             'autostart': autostart,
-                             'node_names': lifecycle_nodes}]),
+                remappings=remappings,
+            ),
+            # ComposableNode(
+            #     package="nav2_lifecycle_manager",
+            #     plugin="nav2_lifecycle_manager::LifecycleManager",
+            #     name="lifecycle_manager_navigation",
+            #     parameters=[
+            #         {
+            #             "use_sim_time": use_sim_time,
+            #             "autostart": autostart,
+            #             "node_names": OpaqueFunction(function=lifecycle_nodes),
+            #         }
+            #     ],
+            # ),
         ],
     )
 
     # Create the launch description and populate
     ld = LaunchDescription()
-
+    launch_arguments = LaunchArguments()
     # Set environment variables
     ld.add_action(stdout_linebuf_envvar)
-
     # Declare the launch options
-    ld.add_action(declare_namespace_cmd)
-    ld.add_action(declare_map_yaml_cmd)
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_params_file_cmd)
-    ld.add_action(declare_autostart_cmd)
-    ld.add_action(declare_use_composition_cmd)
-    ld.add_action(declare_container_name_cmd)
-    ld.add_action(declare_use_respawn_cmd)
-    ld.add_action(declare_log_level_cmd)
+    launch_arguments.add_to_launch_description(ld)
 
     # Add the actions to launch all of the navigation nodes
     ld.add_action(load_nodes)
     ld.add_action(load_composable_nodes)
+    ld.add_action(OpaqueFunction(function=lifecycle_nodes))
 
     return ld

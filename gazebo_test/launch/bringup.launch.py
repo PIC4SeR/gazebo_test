@@ -25,28 +25,49 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.actions import PushRosNamespace
 from launch_ros.descriptions import ParameterFile
 from nav2_common.launch import RewrittenYaml, ReplaceString
+from dataclasses import dataclass
+from gazebo_test.launch_arguments.navigation import NavigationArgs
+from gazebo_sim.launch_arguments.common import GazeboCommonArgs
+from launch_pal.arg_utils import LaunchArgumentsBase
+from launch_pal.include_utils import include_scoped_launch_py_description
+
+
+@dataclass(frozen=True)
+class LaunchArguments(LaunchArgumentsBase):
+    """This class contains a collection of frequently used LaunchArguments for the navigation launch file."""
+
+    use_sim_time: DeclareLaunchArgument = GazeboCommonArgs.use_sim_time
+    use_namespace: DeclareLaunchArgument = NavigationArgs.use_namespace
+    namespace: DeclareLaunchArgument = NavigationArgs.namespace
+    map: DeclareLaunchArgument = NavigationArgs.map
+    params_file: DeclareLaunchArgument = NavigationArgs.params_file
+    autostart: DeclareLaunchArgument = NavigationArgs.autostart
+    use_composition: DeclareLaunchArgument = NavigationArgs.use_composition
+    use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
+    log_level: DeclareLaunchArgument = NavigationArgs.log_level
+    only_planning: DeclareLaunchArgument = NavigationArgs.only_planning
 
 
 def generate_launch_description():
     # Get the launch directory
     bringup_dir = get_package_share_directory("gazebo_test")
-    launch_dir = os.path.join(bringup_dir, "launch")
 
     # Create the launch configuration variables
     namespace = LaunchConfiguration("namespace")
     use_namespace = LaunchConfiguration("use_namespace")
-    map_yaml_file = LaunchConfiguration("map")
+    map = LaunchConfiguration("map")
     use_sim_time = LaunchConfiguration("use_sim_time")
     params_file = LaunchConfiguration("params_file")
     autostart = LaunchConfiguration("autostart")
     use_composition = LaunchConfiguration("use_composition")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
+    only_planning = LaunchConfiguration("only_planning")
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -57,17 +78,17 @@ def generate_launch_description():
     remappings = [("/tf", "tf"), ("/tf_static", "tf_static")]
 
     # Create our own temporary YAML files that include substitutions
-    param_substitutions = {"use_sim_time": use_sim_time, "yaml_filename": map_yaml_file}
+    param_substitutions = {"use_sim_time": use_sim_time, "yaml_filename": map}
 
     # Only it applys when `use_namespace` is True.
     # '<robot_namespace>' keyword shall be replaced by 'namespace' launch argument
     # in config file 'nav2_multirobot_params.yaml' as a default & example.
     # User defined config file should contain '<robot_namespace>' keyword for the replacements.
-    params_file = ReplaceString(
-        source_file=params_file,
-        replacements={"<robot_namespace>": ("/", namespace)},
-        condition=IfCondition(use_namespace),
-    )
+    # params_file = ReplaceString(
+    #     source_file=params_file,
+    #     replacements={"<robot_namespace>": ("/", namespace)},
+    #     condition=IfCondition(use_namespace),
+    # )
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -83,60 +104,9 @@ def generate_launch_description():
         "RCUTILS_LOGGING_BUFFERED_STREAM", "1"
     )
 
-    declare_namespace_cmd = DeclareLaunchArgument(
-        "namespace", default_value="", description="Top-level namespace"
-    )
-
-    declare_use_namespace_cmd = DeclareLaunchArgument(
-        "use_namespace",
-        default_value="false",
-        description="Whether to apply a namespace to the navigation stack",
-    )
-
-    declare_map_yaml_cmd = DeclareLaunchArgument(
-        "map",
-        default_value=os.path.join(bringup_dir, "maps", "social_nav_map.yaml"),
-        description="Full path to map yaml file to load",
-    )
-
-    declare_use_sim_time_cmd = DeclareLaunchArgument(
-        "use_sim_time",
-        default_value="false",
-        description="Use simulation (Gazebo) clock if true",
-    )
-
-    declare_params_file_cmd = DeclareLaunchArgument(
-        "params_file",
-        default_value=os.path.join(bringup_dir, "config", "nav2_params.yaml"),
-        description="Full path to the ROS2 parameters file to use for all launched nodes",
-    )
-
-    declare_autostart_cmd = DeclareLaunchArgument(
-        "autostart",
-        default_value="true",
-        description="Automatically startup the nav2 stack",
-    )
-
-    declare_use_composition_cmd = DeclareLaunchArgument(
-        "use_composition",
-        default_value="True",
-        description="Whether to use composed bringup",
-    )
-
-    declare_use_respawn_cmd = DeclareLaunchArgument(
-        "use_respawn",
-        default_value="False",
-        description="Whether to respawn if a node crashes. Applied when composition is disabled.",
-    )
-
-    declare_log_level_cmd = DeclareLaunchArgument(
-        "log_level", default_value="info", description="log level"
-    )
-
     # Specify the actions
     bringup_cmd_group = GroupAction(
         [
-            PushRosNamespace(condition=IfCondition(use_namespace), namespace=namespace),
             Node(
                 condition=IfCondition(use_composition),
                 name="nav2_container",
@@ -146,21 +116,39 @@ def generate_launch_description():
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
                 output="screen",
+                namespace=namespace,
             ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(launch_dir, "navigation.launch.py")
-                ),
+            # IncludeLaunchDescription(
+            #     PythonLaunchDescriptionSource(
+            #         os.path.join(launch_dir, "navigation.launch.py")
+            #     ),
+            #     launch_arguments={
+            #         "namespace": namespace,
+            #         "map": map_yaml_file,
+            #         "use_sim_time": use_sim_time,
+            #         "autostart": autostart,
+            #         "params_file": params_file,
+            #         "use_composition": use_composition,
+            #         "use_respawn": use_respawn,
+            #         "container_name": "nav2_container",
+            #         "only_planning": only_planning,
+            #     }.items(),
+            # ),
+            include_scoped_launch_py_description(
+                pkg_name="gazebo_test",
+                paths=["launch", "navigation.launch.py"],
                 launch_arguments={
                     "namespace": namespace,
-                    "map": map_yaml_file,
+                    "map": map,
                     "use_sim_time": use_sim_time,
                     "autostart": autostart,
                     "params_file": params_file,
                     "use_composition": use_composition,
                     "use_respawn": use_respawn,
                     "container_name": "nav2_container",
-                }.items(),
+                    "only_planning": only_planning,
+                },
+                namespace=namespace,
             ),
         ]
     )
@@ -172,15 +160,8 @@ def generate_launch_description():
     ld.add_action(stdout_linebuf_envvar)
 
     # Declare the launch options
-    ld.add_action(declare_namespace_cmd)
-    ld.add_action(declare_use_namespace_cmd)
-    ld.add_action(declare_map_yaml_cmd)
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_params_file_cmd)
-    ld.add_action(declare_autostart_cmd)
-    ld.add_action(declare_use_composition_cmd)
-    ld.add_action(declare_use_respawn_cmd)
-    ld.add_action(declare_log_level_cmd)
+    launch_arguments = LaunchArguments()
+    launch_arguments.add_to_launch_description(ld)
 
     # Add the actions to launch all of the navigation nodes
     ld.add_action(bringup_cmd_group)

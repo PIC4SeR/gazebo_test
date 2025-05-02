@@ -1,45 +1,242 @@
+import asyncio
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
 
+from gazebo_msgs.srv import SetEntityState, SpawnEntity, DeleteEntity
+from gazebo_msgs.msg import EntityState
+from std_srvs.srv import Empty
+from geometry_msgs.msg import Pose
+from typing import Optional, List, Dict, Callable
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+import rclpy
+import time
 
-class GazeboEnvironmentHandler(Node):
+
+class GazeboEnvironmentHandler:
     """
-    A class to handle the communication with the Gazebo environment.
-
+    A class to handle the communication with the Gazebo environment using asyncio.
     """
 
-    def __init__(self):
-        self._node = Node("gazebo_environment_handler")
-        self._node.get_logger().info("GazeboEnvironmentHandler initialized")
+    def __init__(self, node: Node):
+        self.node = node
+        self.reset_world_client = self.node.create_client(
+            Empty, "reset_simulation", callback_group=MutuallyExclusiveCallbackGroup()
+        )
+        self.pause_physics_client = self.node.create_client(
+            Empty, "pause_physics", callback_group=MutuallyExclusiveCallbackGroup()
+        )
+        self.unpause_physics_client = self.node.create_client(
+            Empty, "unpause_physics", callback_group=MutuallyExclusiveCallbackGroup()
+        )
+        self.set_entity_state_client = self.node.create_client(
+            SetEntityState,
+            "test/set_entity_state",
+            callback_group=ReentrantCallbackGroup(),
+        )
+        self.spawn_entity_client = self.node.create_client(
+            SpawnEntity,
+            "/spawn_entity",
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
+        self.delete_entity_client = self.node.create_client(
+            DeleteEntity,
+            "/delete_entity",
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
+        self.get_logger = self.node.get_logger
+        self.get_logger().info("GazeboEnvironmentHandler initialized")
 
-    def pause_gazebo(self):
+    async def wait_for_gazebo_ready(self):
+        """
+        Wait for the Gazebo environment to be ready.
+        """
+        self.get_logger().info("Waiting for Gazebo environment to be ready...")
+        await self.wait_for_services()
+        self.get_logger().info("Gazebo environment is ready")
+
+    async def wait_for_services(self):
+        """
+        Wait for all required services to be available.
+        """
+        services = [
+            self.reset_world_client,
+            self.pause_physics_client,
+            self.unpause_physics_client,
+            self.set_entity_state_client,
+            self.spawn_entity_client,
+            self.delete_entity_client,
+        ]
+        for client in services:
+            while not client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().info(f"Waiting for {client.srv_name} service...")
+
+    async def pause_gazebo(self) -> bool:
         """
         Pauses the Gazebo environment.
+        returns:
+            bool: True if the environment was paused successfully, False otherwise.
         """
-        self._node.get_logger().info("Pausing Gazebo environment")
-        # Implement the logic to pause the Gazebo environment
-        pass
+        self.get_logger().info("Pausing Gazebo environment")
+        req = Empty.Request()
+        try:
+            future = await self.pause_physics_client.call_async(req)
+            self.get_logger().info("Gazebo environment paused successfully")
+        except Exception as e:
+            self.get_logger().error(f"Failed to pause Gazebo environment: {e}")
+            return False
+        return True
 
-    def resume_gazebo(self):
+    async def resume_gazebo(self) -> bool:
         """
         Resumes the Gazebo environment.
+        returns:
+            bool: True if the environment was resumed successfully, False otherwise.
         """
-        self._node.get_logger().info("Resuming Gazebo environment")
-        # Implement the logic to resume the Gazebo environment
-        pass
+        self.get_logger().info("Resuming Gazebo environment")
+        req = Empty.Request()
+        try:
+            future = await self.unpause_physics_client.call_async(req)
+            self.get_logger().info("Gazebo environment resumed successfully")
+        except Exception as e:
+            self.get_logger().error(f"Failed to resume Gazebo environment: {e}")
+            return False
+        return True
 
-    def reset_the_world(self):
+    async def reset_the_world(self) -> bool:
+        """
+        Resets the Gazebo environment.
+        returns:
+            bool: True if the environment was reset successfully, False otherwise.
+        """
+        self.get_logger().info("Resetting Gazebo environment")
+        req = Empty.Request()
+        try:
+            # await self.reset_world_client.call_async(req)
+            future = await self.reset_world_client.call_async(req)
+            self.get_logger().info("Gazebo environment reset successfully")
+        except Exception as e:
+            self.get_logger().error(f"Failed to reset Gazebo environment: {e}")
+            return False
+        return True
+
+    async def spawn_entity(
+        self,
+        entity_name: str,
+        entity_xml: str,
+        robot_namespace: Optional[str] = None,
+        initial_pose: Optional[Pose] = None,
+        reference_frame: Optional[str] = None,
+    ):
+        """
+        Spawns an entity in the Gazebo environment.
+        """
+        self.get_logger().info(f"Spawning {entity_name} in Gazebo")
+        req = SpawnEntity.Request()
+        req.name = entity_name
+        req.xml = entity_xml
+        req.robot_namespace = robot_namespace if robot_namespace else ""
+        req.initial_pose = initial_pose if initial_pose else Pose()
+        req.reference_frame = reference_frame if reference_frame else "world"
+        try:
+            response = await self.spawn_entity_client.call_async(req)
+            if response.success:
+                self.get_logger().info("Entity spawned successfully")
+            else:
+                self.get_logger().error("Failed to spawn entity")
+        except Exception as e:
+            self.get_logger().error(f"Failed to spawn entity: {e}")
+
+    async def delete_entity(self, entity_name: str):
+        """
+        Deletes an entity from the Gazebo environment.
+        """
+        self.get_logger().info(f"Deleting {entity_name} from Gazebo")
+        req = DeleteEntity.Request()
+        req.name = entity_name
+        try:
+            response = await self.delete_entity_client.call_async(req)
+            if response.success:
+                self.get_logger().info("Entity deleted successfully")
+            else:
+                self.get_logger().error("Failed to delete entity")
+        except Exception as e:
+            self.get_logger().error(f"Failed to delete entity: {e}")
+
+    async def set_entities_state(
+        self,
+        entities: List[EntityState],
+        on_done: Optional[Callable[[Dict[str, bool]], None]] = None,
+    ) -> Dict[str, bool]:
+        """
+        Asynchronously set the state of multiple entities in Gazebo.
+        Args:
+            entities (List[EntityState]): List of EntityState objects to set.
+            on_done (Optional[Callable[[Dict[str, bool]], None]]): Callback function
+                to be called when the operation is done. It receives a dictionary
+                with entity names as keys and success status as values.
+        Returns:
+            dict: A dictionary with entity names as keys and success status as values.
+        Raises:
+            ValueError: If the entities list is empty.
+        """
+        if not entities:
+            raise ValueError("Entity list must not be empty.")
+
+        self.get_logger().info(
+            f"Setting state for {len(entities)} entities in Gazebo..."
+        )
+        results = {}
+
+        async def set_state(entity: EntityState):
+            try:
+                req = SetEntityState.Request()
+                req._state = entity
+                response = await self.set_entity_state_client.call_async(req)
+                results[entity.name] = response.success
+                msg = "✔" if response.success else "✖"
+                self.get_logger().info(
+                    f"{msg} Entity '{entity.name}' set: success={response.success}"
+                )
+            except Exception as e:
+                results[entity.name] = False
+                self.get_logger().error(
+                    f"⚠ Exception setting entity '{entity.name}': {e}"
+                )
+
+        # await asyncio.gather(*(set_state(entity) for entity in entities))
+        for entity in entities:
+            await set_state(entity)
+
+        if on_done:
+            self.get_logger().info("Calling on_done callback")
+            try:
+                on_done(results)
+            except Exception as e:
+                self.get_logger().error(f"on_done callback raised an exception: {e}")
+        return results
+
+    async def reset_environment_for_experiment(self, entities: List[EntityState]):
         """
         Resets the Gazebo environment.
         """
-        self._node.get_logger().info("Resetting Gazebo environment")
-        # Implement the logic to reset the Gazebo environment
-        pass
+        self.get_logger().info("Resetting Gazebo environment")
+        pause_success = await self.pause_gazebo()
+        if not pause_success:
+            self.get_logger().error("Failed to pause Gazebo environment")
+            return False
+        # reset_success = await self.reset_the_world()
+        # if not reset_success:
+        #     self.get_logger().error("Failed to reset Gazebo environment")
+        #     return False
+        set_entity_success = await self.set_entities_state(entities)
+        if not set_entity_success:
+            self.get_logger().error("Failed to set entities state")
+            return False
+        resume_success = await self.resume_gazebo()
+        if not resume_success:
+            self.get_logger().error("Failed to resume Gazebo environment")
+            return False
 
-    def shutdown_gazebo(self):
-        """
-        Shuts down the Gazebo environment.
-        """
-        self._node.get_logger().info("Shutting down Gazebo environment")
-        # Implement the logic to shut down the Gazebo environment
-        pass
+        self.get_logger().info("experiment reset successfully")
+
+        return True

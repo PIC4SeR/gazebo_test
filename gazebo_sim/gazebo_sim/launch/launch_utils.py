@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from launch.substitutions import PathJoinSubstitution
 from launch import SomeSubstitutionsType
 from launch_ros.substitutions import FindPackageShare
@@ -60,3 +60,32 @@ def spawn_goal_entity(
         output="screen",
         arguments=["-entity", "goal", "-file", goal_entity, "-x", x, "-y", y],
     )
+
+
+def parse_launch_config_value(value: str) -> Union[str, bool, int, float, List[str]]:
+    """
+    Parse a LaunchConfiguration string into an appropriate Python type:
+    - "true" / "false" → bool
+    - numeric strings → int or float
+    - comma-separated strings → list
+    - fallback → string
+    """
+    lowered = value.lower()
+
+    if lowered in ("true", "1", "yes"):
+        return True
+    if lowered in ("false", "0", "no"):
+        return False
+
+    try:
+        if "." in value:
+            return float(value)
+        return int(value)
+    except ValueError:
+        pass
+
+    # Try parsing as list
+    if "," in value:
+        return [item.strip() for item in value.split(",")]
+
+    return value  # fallback: return as string
