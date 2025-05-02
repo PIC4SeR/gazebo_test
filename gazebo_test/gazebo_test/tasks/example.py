@@ -56,14 +56,6 @@ class ExperimentManager(Node):
         # if not, spawn the entity
 
         await self.gazebo_env_handler.pause_gazebo()
-        # while not await self.gazebo_env_handler.check_entities_in_world(
-        #     [self.goal_name]
-        # ):
-        #     await self.gazebo_env_handler.spawn_entity(
-        #         entity_name=self.goal_name,
-        #         entity_xml=self.goal_box_xml,
-        #         initial_pose=self.goal_entities["episode_1"].pose,
-        #     )
         agent_entities = await self.gazebo_env_handler.check_entities_in_world(
             list(self.agent_entities.keys())
         )
