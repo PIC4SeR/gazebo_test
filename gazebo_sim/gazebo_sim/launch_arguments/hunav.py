@@ -8,13 +8,13 @@ class HunavArgs:
 
     config_pkg_name: DeclareLaunchArgument = DeclareLaunchArgument(
         "config_pkg_name",
-        default_value="mpc_diff_exp",
+        default_value="gazebo_sim",
         description="Package name where the world and configuration files are located.",
     )
 
     world_pkg_name: DeclareLaunchArgument = DeclareLaunchArgument(
         "world_pkg_name",
-        default_value="mpc_diff_exp",
+        default_value="gazebo_sim",
         description="Package name where the world and configuration files are located.",
     )
     ignore_models: DeclareLaunchArgument = DeclareLaunchArgument(
