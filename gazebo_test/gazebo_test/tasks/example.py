@@ -26,7 +26,6 @@ class ExperimentManager(Node):
 
         # wait for the gazebo env handler to be ready
 
-        self.agent_entities: Dict[str, EntityState] = {}
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
         self.goal_name: str = "goal_box"
@@ -56,13 +55,6 @@ class ExperimentManager(Node):
         # if not, spawn the entity
 
         await self.gazebo_env_handler.pause_gazebo()
-        agent_entities = await self.gazebo_env_handler.check_entities_in_world(
-            list(self.agent_entities.keys())
-        )
-        if not agent_entities:
-            raise ValueError(
-                f"Agent entities {list(self.agent_entities.keys())} not found in the world"
-            )
         self.get_logger().info("All entities are in the world")
 
     async def run_experiments(self):
@@ -88,8 +80,7 @@ class ExperimentManager(Node):
 
         entities_to_reset = [
             self.initial_state_entities[episode],
-            # self.goal_entities[episode],
-        ] + list(self.agent_entities.values())
+        ]
 
         await self.gazebo_env_handler.reset_environment_for_experiment(
             entities_to_reset,
@@ -122,7 +113,7 @@ class ExperimentManager(Node):
         print("Stopping experiment...")
 
     # def json_to_entity_state(self, yaml_path: Path) -> List[EntityState]:
-    def parse_entity_state_yaml(self, yaml_path: Path) -> List[EntityState]:
+    def parse_entity_state_yaml(self, yaml_path: Path) -> Dict[str, EntityState]:
         """
         Parse data to create a list of EntityState objects.
         This method reads the yaml file from the provided path and converts it into
@@ -177,23 +168,7 @@ class ExperimentManager(Node):
 
             self.goal_entities[episode] = goal_entity
             self.initial_state_entities[episode] = initial_state_entity
-
-        for key, agent in agents.items():
-            agent_entity = EntityState()
-            agent_entity.name = key
-            agent_entity.pose = Pose()
-            # Position
-            agent_entity.pose.position.x = agent[0]
-            agent_entity.pose.position.y = agent[1]
-            agent_entity.pose.position.z = 1.5
-            # Orientation
-            quaternion = quaternion_from_euler(0, 0, agent[2])
-            agent_entity.pose.orientation.x = quaternion[0]
-            agent_entity.pose.orientation.y = quaternion[1]
-            agent_entity.pose.orientation.z = quaternion[2]
-            agent_entity.pose.orientation.w = quaternion[3]
-            # Reference frame
-
-            self.agent_entities[key] = agent_entity
-
-            self.get_logger().info(f"Agent {key} name: {agent_entity.name}")
+        return {
+            "initial_state_entities": self.initial_state_entities,
+            "goal_entities": self.goal_entities,
+        }

@@ -40,6 +40,7 @@ class LaunchArguments(LaunchArgumentsBase):
     gzpose_y: DeclareLaunchArgument = GazeboCommonArgs.y
     gzpose_Y: DeclareLaunchArgument = GazeboCommonArgs.yaw
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
+    use_collision: DeclareLaunchArgument = HunavArgs.use_collision
     use_gazebo_controllers: DeclareLaunchArgument = RobotArgs.use_gazebo_controllers
 
 
@@ -84,6 +85,7 @@ def generate_launch_description():
             "global_frame_to_publish": LaunchConfiguration("global_frame_to_publish"),
             "ignore_models": LaunchConfiguration("ignore_models"),
             "use_navgoal_to_start": LaunchConfiguration("use_navgoal_to_start"),
+            "use_collision": LaunchConfiguration("use_collision"),
         },
     )
 

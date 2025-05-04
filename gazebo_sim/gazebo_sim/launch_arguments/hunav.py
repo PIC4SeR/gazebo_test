@@ -66,3 +66,9 @@ class HunavArgs:
         default_value="false",
         description="Whether to start the agents movements when a navigation goal is received or not",
     )
+
+    use_collision = DeclareLaunchArgument(
+        "use_collision",
+        default_value="true",
+        description="Whether to use the collision detection or not",
+    )
