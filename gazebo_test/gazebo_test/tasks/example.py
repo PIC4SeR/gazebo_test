@@ -3,6 +3,7 @@ from rclpy.qos import QoSProfile
 from rclpy.executors import SingleThreadedExecutor, MultiThreadedExecutor
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
+from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
 from gazebo_msgs.msg import EntityState
 from std_srvs.srv import Empty
 from rclpy.task import Future
@@ -10,7 +11,6 @@ from geometry_msgs.msg import Pose
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from tf_transformations import quaternion_from_euler
-import time
 
 from ament_index_python.packages import get_package_share_directory
 
@@ -22,6 +22,7 @@ class ExperimentManager(Node):
         super().__init__("experiment_manager")
         self.experiment = None
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
+        self.evaluation_handler = ExperimentEvaluator(self, timeout_duration=40.0)
         # Initialize other necessary components
 
         # wait for the gazebo env handler to be ready
@@ -48,21 +49,21 @@ class ExperimentManager(Node):
 
     async def initialize(self):
         # Placeholder for initialization logic
-        self.get_logger().info("Initializing experiment ...")
+        self.get_logger().debug("Initializing experiment ...")
         # Initialize the experiment manager
         await self.gazebo_env_handler.wait_for_gazebo_ready()
         # check if there is the entity in the world
         # if not, spawn the entity
 
         await self.gazebo_env_handler.pause_gazebo()
-        self.get_logger().info("All entities are in the world")
+        self.get_logger().debug("All entities are in the world")
 
     async def run_experiments(self):
         """
         Run the experiments sequentially.
         This method will run the experiments for each episode defined in the YAML file.
         """
-        self.get_logger().info("Running experiments ...")
+        self.get_logger().debug("Running experiments ...")
         for episode in self.initial_state_entities.keys():
             await self.run_experiment(episode)
 
@@ -75,9 +76,6 @@ class ExperimentManager(Node):
         self.get_logger().info(f"Running experiment for {episode} ...")
 
         # Placeholder for experiment running logic
-        self.get_logger().info("Running experiment...")
-        # reset the environment
-
         entities_to_reset = [
             self.initial_state_entities[episode],
         ]
@@ -90,8 +88,13 @@ class ExperimentManager(Node):
 
         self.get_logger().info("Environment reset successfully")
 
-        time.sleep(5)  # Placeholder for waiting logic
+        # time.sleep(5)  # Placeholder for waiting logic
+        self.get_logger().info("initializing experiment ...")
+        # self.evaluation_handler.run_experiment()
 
+        experiment_result = await self.evaluation_handler.run_experiment()
+
+        self.get_logger().info(f"Experiment result: {experiment_result}")
         # Syncronously wait for the environment to be ready
 
         # get the initial state of the environment from goal and poses
@@ -135,7 +138,6 @@ class ExperimentManager(Node):
 
         goals = data.get("goals", {})
         poses = data.get("poses", {})
-        agents = data.get("agents", {})
 
         robot_name = data.get("robot_name", "robot")
         self.goal_name = data.get("goal_name", "goal_box")
