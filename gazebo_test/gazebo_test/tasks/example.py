@@ -22,7 +22,10 @@ class ExperimentManager(Node):
         super().__init__("experiment_manager")
         self.experiment = None
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
-        self.evaluation_handler = ExperimentEvaluator(self, timeout_duration=40.0)
+        self.evaluation_handler = ExperimentEvaluator(
+            self, timeout_duration=5.0
+        )  # todo: make it configurable
+        self.repetitions = 2  # todo: make it configurable
         # Initialize other necessary components
 
         # wait for the gazebo env handler to be ready
@@ -35,7 +38,7 @@ class ExperimentManager(Node):
             Path(
                 f"{get_package_share_directory('gazebo_test')}/goals_and_poses/social_nav.yaml"
             )
-        )
+        )  # todo: make it configurable
 
         self.goal_box_xml = (
             Path(
@@ -65,16 +68,23 @@ class ExperimentManager(Node):
         """
         self.get_logger().debug("Running experiments ...")
         for episode in self.initial_state_entities.keys():
-            await self.run_experiment(episode)
+            self.get_logger().info(f"Starting {episode}")
+            for i in range(self.repetitions):
+                result = await self.run_experiment(episode)
+                self.get_logger().info(
+                    f"Run {i + 1} for {episode} completed with result: {result}"
+                )
+        self.get_logger().info("All experiments completed")
+        self.end = True
 
-    async def run_experiment(self, episode: str = "episode_1"):
+    async def run_experiment(self, episode: str = "episode_1") -> ExperimentResult:
         """
         Run the experiment for a given episode.
         Args:
             episode (str): The episode to run.
+        Returns:
+            ExperimentResult: The result of the experiment.
         """
-        self.get_logger().info(f"Running experiment for {episode} ...")
-
         # Placeholder for experiment running logic
         entities_to_reset = [
             self.initial_state_entities[episode],
@@ -86,15 +96,15 @@ class ExperimentManager(Node):
             goal_xml=self.goal_box_xml,
         )
 
-        self.get_logger().info("Environment reset successfully")
+        self.get_logger().debug("Environment reset successfully")
 
         # time.sleep(5)  # Placeholder for waiting logic
-        self.get_logger().info("initializing experiment ...")
+        self.get_logger().debug("initializing experiment ...")
         # self.evaluation_handler.run_experiment()
 
         experiment_result = await self.evaluation_handler.run_experiment()
 
-        self.get_logger().info(f"Experiment result: {experiment_result}")
+        self.get_logger().debug(f"Run result: {experiment_result}")
         # Syncronously wait for the environment to be ready
 
         # get the initial state of the environment from goal and poses
@@ -110,6 +120,7 @@ class ExperimentManager(Node):
         # Placeholder for waiting logic
         # Placeholder for experiment running logic
         # set a timeout for the experiment
+        return experiment_result
 
     def stop_experiment(self):
         # Placeholder for stopping the experiment

@@ -2,7 +2,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSDurabilityPolicy
 from rclpy.qos import QoSHistoryPolicy
-from nav2_simple_commander.robot_navigator import BasicNavigator
+from gazebo_test.utils.basic_navigator import BasicNavigator
 from nav2_msgs.srv import ManageLifecycleNodes
 import rclpy
 

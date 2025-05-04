@@ -14,7 +14,6 @@ import threading
 async def run(exp_menager: ExperimentManager):
 
     while exp_menager.end is False:
-        exp_menager.get_logger().info("Waiting for experiment to finish...")
         future_initialize = exp_menager.initialize()
         await future_initialize
 
