@@ -1,16 +1,15 @@
 from rclpy.node import Node
-from rclpy.qos import QoSProfile
-from rclpy.executors import SingleThreadedExecutor, MultiThreadedExecutor
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
+from gazebo_test.utils.bag_recorder import BagRecorder
 from gazebo_msgs.msg import EntityState
-from std_srvs.srv import Empty
-from rclpy.task import Future
 from geometry_msgs.msg import Pose
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from tf_transformations import quaternion_from_euler
+import pandas as pd
+import time
 
 from ament_index_python.packages import get_package_share_directory
 
@@ -20,19 +19,37 @@ import yaml
 class ExperimentManager(Node):
     def __init__(self):
         super().__init__("experiment_manager")
-        self.experiment = None
+        self.algorithm_name = "test"  # todo: make it configurable
+
+        self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
+        self.base_path = Path(
+            f"/workspaces/hunavsim_ws/bags/gazebo_test/exp_{self.date}/"
+        )  # todo: make it configurable
+
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
             self, timeout_duration=5.0
         )  # todo: make it configurable
-        self.repetitions = 2  # todo: make it configurable
-        # Initialize other necessary components
+        self.bag_recorder = BagRecorder(
+            self, algorithm=self.algorithm_name, base_path=self.base_path
+        )
 
-        # wait for the gazebo env handler to be ready
+        self.use_recorder = True  # todo: make it configurable
+        self.repetitions = 2  # todo: make it configurable
 
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
         self.goal_name: str = "goal_box"
+
+        self.experiment_outcomes: pd.DataFrame = pd.DataFrame(
+            columns=["episode", "run", "result"]
+        )
+
+        self.experiment_outcomes_path = Path(
+            f"{self.base_path.resolve()}/{self.algorithm_name}_outcomes.csv"
+        )
+        if not self.experiment_outcomes_path.exists():
+            self.experiment_outcomes_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.parse_entity_state_yaml(
             Path(
@@ -55,9 +72,6 @@ class ExperimentManager(Node):
         self.get_logger().debug("Initializing experiment ...")
         # Initialize the experiment manager
         await self.gazebo_env_handler.wait_for_gazebo_ready()
-        # check if there is the entity in the world
-        # if not, spawn the entity
-
         await self.gazebo_env_handler.pause_gazebo()
         self.get_logger().debug("All entities are in the world")
 
@@ -70,18 +84,46 @@ class ExperimentManager(Node):
         for episode in self.initial_state_entities.keys():
             self.get_logger().info(f"Starting {episode}")
             for i in range(self.repetitions):
-                result = await self.run_experiment(episode)
+                result = await self.run_experiment(episode, i + 1)
                 self.get_logger().info(
                     f"Run {i + 1} for {episode} completed with result: {result}"
                 )
+                # Save the result to the DataFrame
+                self.experiment_outcomes = pd.concat(
+                    [
+                        self.experiment_outcomes,
+                        pd.DataFrame(
+                            {
+                                "episode": [episode],
+                                "run": [i + 1],
+                                "result": [result],
+                            }
+                        ),
+                    ],
+                    ignore_index=True,
+                )
         self.get_logger().info("All experiments completed")
+        # Save the experiment outcomes to a CSV file
+        self.experiment_outcomes.to_csv(self.experiment_outcomes_path, index=False)
+        self.get_logger().info(
+            f"Experiment outcomes saved to {self.experiment_outcomes_path}"
+        )
         self.end = True
 
-    async def run_experiment(self, episode: str = "episode_1") -> ExperimentResult:
+    async def run_experiment(
+        self, episode: str = "episode_1", run_id: int = 1
+    ) -> ExperimentResult:
         """
         Run the experiment for a given episode.
+        This method will reset the environment, start the experiment, and return the result.
+        The experiment is considered successful if the robot reaches the goal
+        without any collisions and within the timeout duration.
+        The experiment is considered a failure if:
+        - A collision is detected with an agent or the environment
+        - The timeout duration is reached
         Args:
             episode (str): The episode to run.
+            run_id (int): The run ID for the experiment.
         Returns:
             ExperimentResult: The result of the experiment.
         """
@@ -98,35 +140,20 @@ class ExperimentManager(Node):
 
         self.get_logger().debug("Environment reset successfully")
 
-        # time.sleep(5)  # Placeholder for waiting logic
-        self.get_logger().debug("initializing experiment ...")
-        # self.evaluation_handler.run_experiment()
+        self.get_logger().debug("Starting recording ...")
+        self.bag_recorder.start_recording(
+            experiment_name=episode,
+            run_id=str(run_id),
+        )
 
         experiment_result = await self.evaluation_handler.run_experiment()
-
+        self.get_logger().debug("Experiment completed")
+        self.bag_recorder.set_experiment_result(result=str(experiment_result))
+        self.bag_recorder.stop_recording()
+        self.get_logger().debug("Recording stopped")
         self.get_logger().debug(f"Run result: {experiment_result}")
-        # Syncronously wait for the environment to be ready
-
-        # get the initial state of the environment from goal and poses
-        #
-        # experiment = ...  # Placeholder for the experiment object
-        # # set the initial state of the environment using set_state
-        # self.gazebo_env_handler.set_entities_state(experiment.initial_state)
-        # # Syncronously wait for the environment to be ready
-
-        # # start the experiment
-        # self.gazebo_env_handler.resume_gazebo()
-        # Syncronously wait for the environment to be ready and the experiment to start
-        # Placeholder for waiting logic
-        # Placeholder for experiment running logic
-        # set a timeout for the experiment
         return experiment_result
 
-    def stop_experiment(self):
-        # Placeholder for stopping the experiment
-        print("Stopping experiment...")
-
-    # def json_to_entity_state(self, yaml_path: Path) -> List[EntityState]:
     def parse_entity_state_yaml(self, yaml_path: Path) -> Dict[str, EntityState]:
         """
         Parse data to create a list of EntityState objects.
