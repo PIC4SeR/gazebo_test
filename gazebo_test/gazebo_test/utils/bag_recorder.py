@@ -149,3 +149,12 @@ class BagRecorder:
             self.get_clock().now().nanoseconds,
         )
         self.logger.debug(f"Experiment result: {result}")
+
+    def set_result_and_stop_recording(self, result: str):
+        """
+        Set the result of the experiment and stop recording.
+        Args:
+            result: The result of the experiment.
+        """
+        self.set_experiment_result(result)
+        self.stop_recording()

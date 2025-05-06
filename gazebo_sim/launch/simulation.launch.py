@@ -37,6 +37,7 @@ class LaunchArguments(LaunchArgumentsBase):
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
     use_collision: DeclareLaunchArgument = HunavArgs.use_collision
     use_gazebo_controllers: DeclareLaunchArgument = RobotArgs.use_gazebo_controllers
+    use_collision_sensor: DeclareLaunchArgument = RobotArgs.use_collision_sensor
     goal_x: DeclareLaunchArgument = GazeboCommonArgs.goal_x
     goal_y: DeclareLaunchArgument = GazeboCommonArgs.goal_y
 
@@ -69,6 +70,7 @@ def generate_launch_description():
             "yaw": LaunchConfiguration("yaw"),
             "use_collision": LaunchConfiguration("use_collision"),
             "use_gazebo_controllers": LaunchConfiguration("use_gazebo_controllers"),
+            "use_collision_sensor": LaunchConfiguration("use_collision_sensor"),
             "use_navgoal_to_start": LaunchConfiguration("use_navgoal_to_start"),
         },
     )

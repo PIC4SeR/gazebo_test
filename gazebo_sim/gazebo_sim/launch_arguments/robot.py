@@ -12,3 +12,9 @@ class RobotArgs:
         choices=["true", "false"],
         description="Whether to use Gazebo controllers or not",
     )
+    use_collision_sensor: DeclareLaunchArgument = DeclareLaunchArgument(
+        "use_collision_sensor",
+        default_value="true",
+        choices=["true", "false"],
+        description="Whether to use collision sensor or not",
+    )

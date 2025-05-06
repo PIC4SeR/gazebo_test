@@ -139,7 +139,7 @@ controller_server:
         "PathAlign",
         "PathDist",
         "GoalDist",
-        "SocialForceCritic"
+        # "SocialForceCritic"
         ]
       BaseObstacle.scale: 0.02
       PathAlign.scale: 32.0

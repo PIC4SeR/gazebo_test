@@ -28,14 +28,14 @@ class ExperimentManager(Node):
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
-            self, timeout_duration=5.0
+            self, timeout_duration=40.0
         )  # todo: make it configurable
         self.bag_recorder = BagRecorder(
             self, algorithm=self.algorithm_name, base_path=self.base_path
         )
 
-        self.use_recorder = True  # todo: make it configurable
-        self.repetitions = 2  # todo: make it configurable
+        self.use_recorder = False  # todo: make it configurable
+        self.repetitions = 1  # todo: make it configurable
 
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
@@ -140,17 +140,20 @@ class ExperimentManager(Node):
 
         self.get_logger().debug("Environment reset successfully")
 
-        self.get_logger().debug("Starting recording ...")
-        self.bag_recorder.start_recording(
-            experiment_name=episode,
-            run_id=str(run_id),
-        )
+        if self.use_recorder:
+            self.get_logger().debug("Starting recording ...")
+            self.bag_recorder.start_recording(
+                experiment_name=episode,
+                run_id=str(run_id),
+            )
 
         experiment_result = await self.evaluation_handler.run_experiment()
         self.get_logger().debug("Experiment completed")
-        self.bag_recorder.set_experiment_result(result=str(experiment_result))
-        self.bag_recorder.stop_recording()
-        self.get_logger().debug("Recording stopped")
+        if self.use_recorder:
+            self.bag_recorder.set_result_and_stop_recording(
+                result=str(experiment_result)
+            )
+            self.get_logger().debug("Recording stopped")
         self.get_logger().debug(f"Run result: {experiment_result}")
         return experiment_result
 

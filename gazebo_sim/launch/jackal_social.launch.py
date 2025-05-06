@@ -42,6 +42,7 @@ class LaunchArguments(LaunchArgumentsBase):
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
     use_collision: DeclareLaunchArgument = HunavArgs.use_collision
     use_gazebo_controllers: DeclareLaunchArgument = RobotArgs.use_gazebo_controllers
+    use_collision_sensor: DeclareLaunchArgument = RobotArgs.use_collision_sensor
 
 
 def launch_jackal_gazebo_sim(context, *args, **kwargs):
@@ -56,6 +57,7 @@ def launch_jackal_gazebo_sim(context, *args, **kwargs):
                     paths=["worlds", "generatedWorld.world"],
                 ),
                 "use_gazebo_controllers": LaunchConfiguration("use_gazebo_controllers"),
+                "use_collision_sensor": LaunchConfiguration("use_collision_sensor"),
                 "x": LaunchConfiguration("x"),
                 "y": LaunchConfiguration("y"),
                 "yaw": LaunchConfiguration("yaw"),
