@@ -4,16 +4,20 @@ from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
 from gazebo_test.utils.bag_recorder import BagRecorder
 from gazebo_msgs.msg import EntityState
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, PoseStamped
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from tf_transformations import quaternion_from_euler
 import pandas as pd
 import time
 
+# from gazebo_test.utils.basic_navigator import BasicNavigator
+from gazebo_test.utils.navigation_handler import NavigationHandler
+
 from ament_index_python.packages import get_package_share_directory
 
 import yaml
+import asyncio
 
 
 class ExperimentManager(Node):
@@ -34,6 +38,10 @@ class ExperimentManager(Node):
             self, algorithm=self.algorithm_name, base_path=self.base_path
         )
 
+        self.navigator = NavigationHandler(
+            node=self,
+            success_callback=self.evaluation_handler.set_success_event,
+        )
         self.use_recorder = False  # todo: make it configurable
         self.repetitions = 1  # todo: make it configurable
 
@@ -72,8 +80,10 @@ class ExperimentManager(Node):
         self.get_logger().debug("Initializing experiment ...")
         # Initialize the experiment manager
         await self.gazebo_env_handler.wait_for_gazebo_ready()
-        await self.gazebo_env_handler.pause_gazebo()
         self.get_logger().debug("All entities are in the world")
+        await self.navigator.initialize_navigation()
+        await self.gazebo_env_handler.pause_gazebo()
+        self.get_logger().debug("Navigation stack initialized")
 
     async def run_experiments(self):
         """
@@ -102,6 +112,7 @@ class ExperimentManager(Node):
                     ],
                     ignore_index=True,
                 )
+        await self.navigator.shutdown_navigation()
         self.get_logger().info("All experiments completed")
         # Save the experiment outcomes to a CSV file
         self.experiment_outcomes.to_csv(self.experiment_outcomes_path, index=False)
@@ -137,8 +148,15 @@ class ExperimentManager(Node):
             goal_entity=self.goal_entities[episode],
             goal_xml=self.goal_box_xml,
         )
-
-        self.get_logger().debug("Environment reset successfully")
+        await self.navigator.reset_navigation()
+        # start navigation
+        # create task to wait for the robot to reach the goal
+        self.navigator.start_navigation_task(
+            goal_pose=self.goal_entities[episode].pose,
+            frame_id="map",
+            success_callback=self.evaluation_handler.set_success_event,
+        )
+        self.get_logger().info("Environment reset successfully")
 
         if self.use_recorder:
             self.get_logger().debug("Starting recording ...")
@@ -148,6 +166,11 @@ class ExperimentManager(Node):
             )
 
         experiment_result = await self.evaluation_handler.run_experiment()
+
+        # cancel the navigation task if it is still running
+
+        await self.navigator.cancel_navigation()
+
         self.get_logger().debug("Experiment completed")
         if self.use_recorder:
             self.bag_recorder.set_result_and_stop_recording(

@@ -48,25 +48,6 @@ class LaunchArguments(LaunchArgumentsBase):
 
 def lifecycle_nodes(context, *args, **kwargs):
     """Return the list of lifecycle nodes to be launched."""
-    # convert to bool
-    # only_planning = PythonExpression(
-    #     ["'", context.launch_configurations["only_planning"].lower(), "' == 'true'"]
-    # ).perform(context)
-    # use_composition = PythonExpression(
-    #     [
-    #         "'",
-    #         context.launch_configurations["use_composition"].lower(),
-    #         "' == 'true'",
-    #     ]
-    # ).perform(context)
-    # use_sim_time = PythonExpression(
-    #     ["'", context.launch_configurations["use_sim_time"].lower(), "' == 'true'"]
-    # ).perform(context)
-
-    # autostart = PythonExpression(
-    #     ["'", context.launch_configurations["autostart"].lower(), "' == 'true'"]
-    # ).perform(context)
-    # log_level = context.launch_configurations["log_level"]
 
     only_planning = LaunchConfiguration("only_planning")
     use_composition = LaunchConfiguration("use_composition")
@@ -138,16 +119,6 @@ def generate_launch_description():
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
     only_planning = LaunchConfiguration("only_planning")
-
-    # lifecycle_nodes = [
-    #     "controller_server",
-    #     "smoother_server",
-    #     "planner_server",
-    #     "behavior_server",
-    #     "bt_navigator",
-    #     "velocity_smoother",
-    #     "map_server",
-    # ]
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -251,18 +222,6 @@ def generate_launch_description():
                 remappings=remappings
                 + [("cmd_vel", "cmd_vel_nav"), ("cmd_vel_smoothed", "cmd_vel")],
             ),
-            # Node(
-            #     package="nav2_lifecycle_manager",
-            #     executable="lifecycle_manager",
-            #     name="lifecycle_manager_navigation",
-            #     output="screen",
-            #     arguments=["--ros-args", "--log-level", log_level],
-            #     parameters=[
-            #         {"use_sim_time": use_sim_time},
-            #         {"autostart": autostart},
-            #         {"node_names": OpaqueFunction(function=lifecycle_nodes)},
-            #     ],
-            # ),
             Node(
                 package="nav2_map_server",
                 executable="map_server",
@@ -335,18 +294,6 @@ def generate_launch_description():
                 parameters=[configured_params],
                 remappings=remappings,
             ),
-            # ComposableNode(
-            #     package="nav2_lifecycle_manager",
-            #     plugin="nav2_lifecycle_manager::LifecycleManager",
-            #     name="lifecycle_manager_navigation",
-            #     parameters=[
-            #         {
-            #             "use_sim_time": use_sim_time,
-            #             "autostart": autostart,
-            #             "node_names": OpaqueFunction(function=lifecycle_nodes),
-            #         }
-            #     ],
-            # ),
         ],
     )
 

@@ -13,6 +13,7 @@ import rclpy
 from rclpy.time import Time
 import asyncio
 from gazebo_collision_msgs.msg import Collision
+from rclpy.logging import LoggingSeverity
 
 
 class ExperimentResult(Enum):
@@ -56,6 +57,7 @@ class ExperimentEvaluator:
         self.logger = rclpy.logging.get_logger("experiment_evaluator")
         self.get_clock = node.get_clock
         self.timeout_timer = None
+        # self.logger.set_level(LoggingSeverity.DEBUG)
 
     async def run_experiment(self) -> ExperimentResult:
         """

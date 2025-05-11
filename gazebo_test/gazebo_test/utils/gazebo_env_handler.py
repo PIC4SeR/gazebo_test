@@ -216,7 +216,6 @@ class GazeboEnvironmentHandler:
                 results[entity.name] = False
                 self.logger.error(f"⚠ Exception setting entity '{entity.name}': {e}")
 
-        # await asyncio.gather(*(set_state(entity) for entity in entities))
         for entity in entities:
             await set_state(entity)
 
