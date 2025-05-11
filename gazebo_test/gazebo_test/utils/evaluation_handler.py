@@ -43,13 +43,6 @@ class ExperimentEvaluator:
         self.start_time = None
         self.node = node
         self._loop = None
-        # use asyncio event to notify the experiment that a collision has been detected
-
-        self.success_event = asyncio.Event()
-        self.collision_event = asyncio.Event()
-        self.timeout_event = asyncio.Event()
-
-        self.experiment_result = ExperimentResult.RESULT_NOT_SET
 
         node.create_subscription(
             Collision, "/jackal/collision", self._collision_callback, 10
@@ -58,6 +51,21 @@ class ExperimentEvaluator:
         self.get_clock = node.get_clock
         self.timeout_timer = None
         # self.logger.set_level(LoggingSeverity.DEBUG)
+
+    def initialize(self):
+        """
+        Initialize the experiment evaluator.
+        This method is called to set up the evaluator before running the experiment.
+        """
+
+        # use asyncio event to notify the experiment that a collision has been detected
+        self.success_event = asyncio.Event()
+        self.collision_event = asyncio.Event()
+        self.timeout_event = asyncio.Event()
+
+        self.experiment_result = ExperimentResult.RESULT_NOT_SET
+        self._loop = asyncio.get_running_loop()
+        self.logger.debug("Experiment evaluator initialized")
 
     async def run_experiment(self) -> ExperimentResult:
         """
@@ -71,8 +79,13 @@ class ExperimentEvaluator:
         Returns:
         - ExperimentResult: The result of the experiment
         """
-        loop = asyncio.get_running_loop()
-        self._loop = loop
+        # loop = asyncio.get_running_loop()
+        # self._loop = loop
+        # unset all events
+        self.collision_event.clear()
+        self.success_event.clear()
+        self.timeout_event.clear()
+
         self.start_time = self.get_clock().now()
         self.experiment_result = ExperimentResult.RESULT_NOT_SET
         self.logger.debug("Experiment started")
@@ -98,18 +111,13 @@ class ExperimentEvaluator:
         if self.timeout_timer:
             self.timeout_timer.cancel()
 
-        # unset all events
-        self.collision_event.clear()
-        self.success_event.clear()
-        self.timeout_event.clear()
-
         return self.experiment_result
 
     def _on_timeout(self):
         """ROS Timer callback: timeout reached based on sim time."""
         self.experiment_result = ExperimentResult.FAILURE_TIMEOUT
         self._loop.call_soon_threadsafe(self.timeout_event.set)
-        self.logger.debug("Timeout reached")
+        self.logger.info("Timeout reached")
 
     def _collision_callback(self, msg: Collision):
         """Callback for the collision sensor.
@@ -122,6 +130,9 @@ class ExperimentEvaluator:
             msg (Collision): The collision message from the collision sensor.
         """
         # assure that the message is arrived after the start time
+        if not self.start_time:
+            self.logger.debug("Collision message arrived before start time")
+            return
         self.logger.debug(
             f"Collision message arrived at: {Time.from_msg(msg.header.stamp) - self.start_time}"
         )
@@ -137,7 +148,7 @@ class ExperimentEvaluator:
         self.logger.debug(f"Collision time: {msg.header.stamp}")
         if "agent" in msg.objects_hit[0]:
             self.experiment_result = ExperimentResult.FAILURE_COLLISION_AGENT
-            self.logger.debug("Collision with agent detected")
+            self.logger.info("Collision with agent detected")
         else:
             self.experiment_result = ExperimentResult.FAILURE_COLLISION_ENVIRONMENT
             self.logger.info("Collision with environment detected")

@@ -74,7 +74,7 @@ class BasicNavigator:
             ClearEntireCostmap, "local_costmap/clear_entirely_local_costmap"
         )
         self.logger = get_logger("basic_navigator")
-        self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
+        # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
 
     def destroyNode(self):
         """Destroy the node and all action clients."""
@@ -109,7 +109,7 @@ class BasicNavigator:
         goal_msg.pose = pose
         goal_msg.behavior_tree = behavior_tree
 
-        self.logger.info(
+        self.logger.debug(
             "Navigating to goal: "
             + str(pose.pose.position.x)
             + " "
@@ -167,7 +167,7 @@ class BasicNavigator:
         Returns:
             None
         """
-        self.logger.info("Canceling current task.")
+        self.logger.debug("Canceling current task.")
         if self.go_to_pose_result:
             future = await self.go_to_pose_goal_handle.cancel_goal_async()
 
@@ -213,7 +213,7 @@ class BasicNavigator:
         """Block until the full navigation system is up and running."""
         await self._waitForNodeToActivate(navigator)
         await self._waitForServer()
-        self.logger.info("Nav2 is ready for use!")
+        self.logger.info("Nav2 is ready for use!", once=True)
         return
 
     def setLoop(self, loop):
@@ -340,7 +340,7 @@ class BasicNavigator:
                     self.logger.error(f"Failed to start up {srv_name}")  # handle error
                     return
                 self.logger.debug(f"Started up {srv_name}")
-        self.logger.info("Nav2 is ready for use!")
+        self.logger.debug("Nav2 is ready for use!")
         return
 
     async def lifecycleReset(self):

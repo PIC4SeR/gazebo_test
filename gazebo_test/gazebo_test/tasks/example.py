@@ -32,7 +32,8 @@ class ExperimentManager(Node):
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
-            self, timeout_duration=40.0
+            self,
+            timeout_duration=20.0,
         )  # todo: make it configurable
         self.bag_recorder = BagRecorder(
             self, algorithm=self.algorithm_name, base_path=self.base_path
@@ -84,6 +85,8 @@ class ExperimentManager(Node):
         await self.navigator.initialize_navigation()
         await self.gazebo_env_handler.pause_gazebo()
         self.get_logger().debug("Navigation stack initialized")
+        self.evaluation_handler.initialize()
+        self.get_logger().debug("Experiment evaluator initialized")
 
     async def run_experiments(self):
         """
@@ -166,18 +169,15 @@ class ExperimentManager(Node):
             )
 
         experiment_result = await self.evaluation_handler.run_experiment()
-
         # cancel the navigation task if it is still running
-
-        await self.navigator.cancel_navigation()
-
-        self.get_logger().debug("Experiment completed")
+        self.get_logger().info("Experiment completed")
         if self.use_recorder:
             self.bag_recorder.set_result_and_stop_recording(
                 result=str(experiment_result)
             )
             self.get_logger().debug("Recording stopped")
         self.get_logger().debug(f"Run result: {experiment_result}")
+        await self.navigator.cancel_navigation()
         return experiment_result
 
     def parse_entity_state_yaml(self, yaml_path: Path) -> Dict[str, EntityState]:

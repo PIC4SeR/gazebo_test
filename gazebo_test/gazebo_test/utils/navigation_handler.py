@@ -63,17 +63,34 @@ class NavigationHandler:
         the result.
         """
         self.logger.debug("Resetting navigation stack ...")
-        # clear all the navigation tasks
-        if self.navigation_task:
-            self.navigation_task.cancel()
+        # Cancel the navigation tasks if they are running
+        if self.navigation_task and self.navigation_task.cancel():
+            self.logger.debug(f"navigating task: {self.navigation_task}")
+            self.logger.debug("Cancelling navigation task ...")
+            # self.navigation_task.cancel()
+            try:
+                await self.navigation_task
+            except asyncio.CancelledError:
+                self.logger.debug("Navigation task cancelled")
+
+        if (
+            hasattr(self, "wait_for_events_task")
+            and not self.wait_for_events_task.cancel()
+        ):
+            self.logger.debug("Cancelling wait_for_events task ...")
             self.wait_for_events_task.cancel()
-            self.navigator.clearEvents()
+            try:
+                await self.wait_for_events_task
+            except asyncio.CancelledError:
+                self.logger.debug("Wait_for_events task cancelled")
+
         # clear the navigator event
         self.navigator.clearEvents()
+
+        # reset the navigation stack
         await self.navigator.lifecycleReset()
         await self.navigator.lifecycleStartup()
         await self.navigator.waitUntilNav2Active()
-        self.logger.debug("Resetting navigation stack ...")
 
     def start_navigation_task(
         self,
@@ -107,11 +124,6 @@ class NavigationHandler:
         self.wait_for_events_task = asyncio.create_task(
             self.wait_for_events(success_callback)
         )
-
-        # if success_callback:
-        #     self.navigation_task.add_done_callback(success_callback)
-        # else:
-        #     self.navigation_task.add_done_callback(self._default_success_callback)
 
     async def wait_for_events(self, callback: Optional[callable] = None) -> None:
         """
@@ -147,10 +159,12 @@ class NavigationHandler:
         """
         self.logger.debug("Shutting down navigation stack ...")
         # clear all the navigation tasks
+        # await self.cancel_navigation()
 
         # clear the navigator event
         self.navigator.clearEvents()
-        await self.navigator.lifecycleShutdown()
+        # await self.navigator.lifecycleShutdown()
+        await self.navigator.lifecycleReset()
 
     async def cancel_navigation(self) -> None:
         """
@@ -158,11 +172,20 @@ class NavigationHandler:
         This method checks if the navigation task is running and cancels it.
         """
         if self.navigation_task:
-            self.logger.warn("Cancelling navigation task ...")
+            self.logger.debug("Cancelling navigation task ...")
             await self.navigator.cancelGoToPose()
             self.navigation_task.cancel()
-            self.wait_for_events_task.cancel()
-            self.logger.warn("Navigation task cancelled")
+            try:
+                await self.navigation_task
+            except asyncio.CancelledError:
+                self.logger.debug("Navigation task cancelled")
+        if hasattr(self, "wait_for_events_task") and self.wait_for_events_task:
+            self.logger.debug("Cancelling wait_for_events task ...")
+            await self.wait_for_events_task
+            try:
+                await self.wait_for_events_task
+            except asyncio.CancelledError:
+                self.logger.debug("Wait_for_events task cancelled")
 
     def resume_navigation(self) -> None:
         """
