@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+import argparse
+import libtmux
+import os
+import time
+
+
+def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Script to control bag recording and headless mode."
+    )
+    parser.add_argument(
+        "--bag-record", action="store_true", help="Enable bag recording"
+    )
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    args = parser.parse_args()
+
+    # Create a new tmux server
+    server = libtmux.Server()
+    # Check if the session already exists
+    session_name = "nav2_session"
+    try:
+        if session_name in server.sessions:
+            print(f"Session '{session_name}' already exists. Exiting.")
+            return
+    except libtmux.exc.LibTmuxException:
+        print("Tmux server not running. Starting a new server.")
+
+    # Create a new tmux session
+    with libtmux.Server() as server:
+        with server.new_session(session_name=session_name) as session:
+            print(f"Created new session: {session_name}")
+
+            # Create a window for gazebo simulation
+            # session.new_window(attach=False, window_name="Gazebo")
+
+            window = session.active_window
+            window.rename_window("Gazebo")
+            print("Created new window: Gazebo")
+            # Start the Gazebo simulation
+            pane = window.split(attach=True)
+            pane.send_keys("ros2 launch gazebo_sim simulation.launch.py")
+            print("Started Gazebo simulation")
+
+            session.new_window(attach=False, window_name="Navigation")
+            window = session.active_window
+            window.rename_window("Navigation")
+            print("Created new window: Navigation")
+            # Start the navigation stack
+            pane = window.split(attach=True)
+            pane.send_keys("ros2 launch gazebo_test bringup.launch.py")
+            print("Started navigation stack")
+
+            # Create a new pane for RViz
+            session.new_window(attach=False, window_name="RViz")
+            window = session.active_window
+            window.rename_window("RViz")
+            print("Created new window: RViz")
+            # Start RViz
+            pane = window.split(attach=True)
+            pane.send_keys(
+                "ros2 run rviz2 rviz2 -d /workspaces/hunavsim_ws/src/adascore/adascore/rviz/jackal.rviz --ros-args -p use_sim_time:=True"
+            )
+            print("Started RViz")
+
+            session.new_window(attach=True)
+            window = session.active_window
+            window.rename_window("gazebo test")
+            print("Created new window: gazebo test")
+            # Start the gazebo test
+            pane = window.split(attach=True)
+            pane.send_keys(
+                "ros2 run gazebo_test example --ros-args -p use_sim_time:=True; tmux wait-for -S process_finished"
+            )
+            print("Started gazebo test")
+
+            # run until the user presses Ctrl+C or until the gazebo test is finished
+
+            try:
+                server.cmd("wait-for", "process_finished")
+                print("Gazebo test finished")
+
+            except KeyboardInterrupt:
+                print("Exiting...")
+
+
+if __name__ == "__main__":
+    main()
