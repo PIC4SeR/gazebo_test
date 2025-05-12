@@ -17,11 +17,11 @@ import time
 import rosbag2_py
 
 topic_dict = {
+    "/goal_pose": PoseStamped,
+    "/experiment_result": String,
     "/cmd_vel": Twist,
     "/front/scan": LaserScan,
-    "/goal_pose": PoseStamped,
     "/human_states": Agents,
-    "/hunav_goal_pose": PoseStamped,
     "/jackal/ground_truth": Odometry,
     "/jackal_velocity_controller/cmd_vel_unstamped": Twist,
     "/jackal_velocity_controller/odom": Odometry,
@@ -52,7 +52,6 @@ class BagRecorder:
         self.logger = rclpy.logging.get_logger("bag_recorder")
         self.get_clock = node.get_clock
         self.algorithm = algorithm
-        self.experiment_name = ""
         self.topics_metadata = []
         for topic_name, msg_type in topic_dict.items():
             # Create a TopicMetadata object for each topic
@@ -63,6 +62,8 @@ class BagRecorder:
                     serialization_format="cdr",
                 )
             )
+            if topic_name == "/experiment_result" or topic_name == "/goal_pose":
+                continue
             self.node.create_subscription(
                 msg_type=msg_type,
                 topic=topic_name,
@@ -71,16 +72,12 @@ class BagRecorder:
                 ),
                 qos_profile=10,
             )
-        self.topics_metadata.append(
-            rosbag2_py.TopicMetadata(
-                name="/experiment_result",
-                type="std_msgs/msg/String",
-                serialization_format="cdr",
-            )
-        )
         # set the logger level of rosbag2_storage to warn
         rosbag2_logger = rclpy.logging.get_logger("rosbag2_storage")
         rosbag2_logger.set_level(rclpy.logging.LoggingSeverity.WARN)
+        self.logger.info(
+            f"BagRecorder initialized with base path: {self.base_path}, algorithm: {self.algorithm}"
+        )
 
     def start_recording(self, experiment_name: str, run_id: str):
         if self.recording:
@@ -158,3 +155,28 @@ class BagRecorder:
         """
         self.set_experiment_result(result)
         self.stop_recording()
+
+    def set_goal(self, goal: PoseStamped):
+        """
+        Set the goal of the experiment.
+        Args:
+            goal: The goal of the experiment.
+        """
+        self.writer.write(
+            "/goal_pose",
+            serialize_message(goal),
+            self.get_clock().now().nanoseconds,
+        )
+        self.logger.debug(f"Goal set to: {goal}")
+
+    def start_recording_and_set_goal(
+        self, experiment_name: str, run_id: str, goal: PoseStamped
+    ):
+        """
+        Start recording and set the goal of the experiment.
+        Args:
+            goal: The goal of the experiment.
+        """
+        self.start_recording(experiment_name, run_id)
+        self.set_goal(goal)
+        self.logger.debug(f"Started recording and set goal to: {goal}")

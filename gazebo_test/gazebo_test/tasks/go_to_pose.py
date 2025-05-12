@@ -3,11 +3,14 @@ from rclpy.node import Node
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
 from gazebo_test.utils.bag_recorder import BagRecorder
+from gazebo_test.utils.common_utils import (
+    parse_entity_state_yaml,
+    get_posestamped_from_entity,
+)
 from gazebo_msgs.msg import EntityState
 from geometry_msgs.msg import Pose, PoseStamped
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from tf_transformations import quaternion_from_euler
 import pandas as pd
 import time
 
@@ -16,39 +19,45 @@ from gazebo_test.utils.navigation_handler import NavigationHandler
 
 from ament_index_python.packages import get_package_share_directory
 
-import yaml
-import asyncio
-
 
 class ExperimentManager(Node):
     def __init__(self):
         super().__init__("experiment_manager")
-        self.algorithm_name = "test"  # todo: make it configurable
+
+        self.algorithm_name = self.declare_parameter("algorithm_name", "test").value
 
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
         self.base_path = Path(
-            f"/workspaces/hunavsim_ws/bags/gazebo_test/exp_{self.date}/"
-        )  # todo: make it configurable
+            self.declare_parameter(
+                "base_path",
+                f"/workspaces/hunavsim_ws/bags/gazebo_test/exp_{self.date}/",
+            ).value
+        )
+
+        timeout_duration = self.declare_parameter("timeout_duration", 20.0).value
+        self.use_recorder = self.declare_parameter("use_recorder", True).value
+        self.repetitions = self.declare_parameter("repetitions", 1).value
+        yaml_path = self.declare_parameter(
+            "yaml_path",
+            f"{get_package_share_directory('gazebo_test')}/goals_and_poses/social_nav.yaml",
+        ).value
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
             self,
-            timeout_duration=20.0,
-        )  # todo: make it configurable
-        self.bag_recorder = BagRecorder(
-            self, algorithm=self.algorithm_name, base_path=self.base_path
+            timeout_duration=timeout_duration,
         )
-
+        if self.use_recorder:
+            self.bag_recorder = BagRecorder(
+                self, algorithm=self.algorithm_name, base_path=self.base_path
+            )
         self.navigator = NavigationHandler(
             node=self,
             success_callback=self.evaluation_handler.set_success_event,
         )
-        self.use_recorder = False  # todo: make it configurable
-        self.repetitions = 1  # todo: make it configurable
 
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
-        self.goal_name: str = "goal_box"
 
         self.experiment_outcomes: pd.DataFrame = pd.DataFrame(
             columns=["episode", "run", "result"]
@@ -60,11 +69,9 @@ class ExperimentManager(Node):
         if not self.experiment_outcomes_path.exists():
             self.experiment_outcomes_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.parse_entity_state_yaml(
-            Path(
-                f"{get_package_share_directory('gazebo_test')}/goals_and_poses/social_nav.yaml"
-            )
-        )  # todo: make it configurable
+        entity_dictionary = parse_entity_state_yaml(Path(yaml_path))
+        self.initial_state_entities = entity_dictionary["initial_state_entities"]
+        self.goal_entities = entity_dictionary["goal_entities"]
 
         self.goal_box_xml = (
             Path(
@@ -145,7 +152,7 @@ class ExperimentManager(Node):
         entities_to_reset = [
             self.initial_state_entities[episode],
         ]
-
+        goal_pose = get_posestamped_from_entity(self.goal_entities[episode], "map")
         await self.gazebo_env_handler.reset_environment_for_experiment(
             entities_to_reset,
             goal_entity=self.goal_entities[episode],
@@ -155,22 +162,22 @@ class ExperimentManager(Node):
         # start navigation
         # create task to wait for the robot to reach the goal
         self.navigator.start_navigation_task(
-            goal_pose=self.goal_entities[episode].pose,
-            frame_id="map",
+            goal_pose=goal_pose,
             success_callback=self.evaluation_handler.set_success_event,
         )
-        self.get_logger().info("Environment reset successfully")
+        self.get_logger().debug("Environment reset successfully")
 
         if self.use_recorder:
             self.get_logger().debug("Starting recording ...")
-            self.bag_recorder.start_recording(
+            self.bag_recorder.start_recording_and_set_goal(
                 experiment_name=episode,
                 run_id=str(run_id),
+                goal=goal_pose,
             )
 
         experiment_result = await self.evaluation_handler.run_experiment()
         # cancel the navigation task if it is still running
-        self.get_logger().info("Experiment completed")
+        self.get_logger().debug("Experiment completed")
         if self.use_recorder:
             self.bag_recorder.set_result_and_stop_recording(
                 result=str(experiment_result)
@@ -179,62 +186,3 @@ class ExperimentManager(Node):
         self.get_logger().debug(f"Run result: {experiment_result}")
         await self.navigator.cancel_navigation()
         return experiment_result
-
-    def parse_entity_state_yaml(self, yaml_path: Path) -> Dict[str, EntityState]:
-        """
-        Parse data to create a list of EntityState objects.
-        This method reads the yaml file from the provided path and converts it into
-        a list of EntityState objects.
-        The data should contain the necessary information to create EntityState
-        objects, such as name, pose, and other attributes.
-
-
-        Args:
-            yaml_path (Path): Path to the YAML file containing the entity state data.
-        Returns:
-            List[EntityState]: List of EntityState objects.
-        """
-
-        with open(yaml_path, "r") as file:
-            data = yaml.safe_load(file)
-
-        episodes = data.get("episodes", [])
-
-        goals = data.get("goals", {})
-        poses = data.get("poses", {})
-
-        robot_name = data.get("robot_name", "robot")
-        self.goal_name = data.get("goal_name", "goal_box")
-
-        for episode in episodes:
-            goal = goals.get(episode, [])
-            pose = poses.get(episode, [])
-
-            goal_entity = EntityState()
-            goal_entity.name = self.goal_name
-            goal_entity.pose = Pose()
-            goal_entity.pose.position.x = goal[0]
-            goal_entity.pose.position.y = goal[1]
-
-            initial_state_entity = EntityState()
-            initial_state_entity.name = robot_name
-            initial_state_entity.pose = Pose()
-
-            # Position
-            initial_state_entity.pose.position.x = pose[0]
-            initial_state_entity.pose.position.y = pose[1]
-            initial_state_entity.pose.position.z = 0.07
-            # Orientation
-            quaternion = quaternion_from_euler(0, 0, pose[2])
-            initial_state_entity.pose.orientation.x = quaternion[0]
-            initial_state_entity.pose.orientation.y = quaternion[1]
-            initial_state_entity.pose.orientation.z = quaternion[2]
-            initial_state_entity.pose.orientation.w = quaternion[3]
-            # Reference frame
-
-            self.goal_entities[episode] = goal_entity
-            self.initial_state_entities[episode] = initial_state_entity
-        return {
-            "initial_state_entities": self.initial_state_entities,
-            "goal_entities": self.goal_entities,
-        }

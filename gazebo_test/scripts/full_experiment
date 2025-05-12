@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 import libtmux
 import os
 import time
+import shtab
+import argcomplete
 
 
 def main():
@@ -14,6 +17,8 @@ def main():
         "--bag-record", action="store_true", help="Enable bag recording"
     )
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    # Hook argcomplete
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # Create a new tmux server
@@ -71,7 +76,7 @@ def main():
             # Start the gazebo test
             pane = window.split(attach=True)
             pane.send_keys(
-                "ros2 run gazebo_test example --ros-args -p use_sim_time:=True; tmux wait-for -S process_finished"
+                "ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True; tmux wait-for -S process_finished"
             )
             print("Started gazebo test")
 
@@ -80,6 +85,10 @@ def main():
             try:
                 server.cmd("wait-for", "process_finished")
                 print("Gazebo test finished")
+                # retrieve the log of the gazebo test
+                log = pane.capture_pane()
+                print("Captured pane output")
+                print(log)
 
             except KeyboardInterrupt:
                 print("Exiting...")

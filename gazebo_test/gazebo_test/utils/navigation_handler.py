@@ -21,10 +21,9 @@ class NavigationHandler:
         self._loop = None
         self.navigator = BasicNavigator(
             node=self.node,
-            # success_callback=success_callback,
         )
         self.logger = rclpy.logging.get_logger("navigation_handler")
-        self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
+        # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
         self.navigation_task = None
         self._default_success_callback = success_callback
 
@@ -43,6 +42,7 @@ class NavigationHandler:
             await self.navigator.lifecycleStartup()
             self.logger.debug("Waiting for Nav2 to be active ...")
         await self.navigator.waitUntilNav2Active()
+        self.logger.debug("NavigationHandler initialized")
 
     def pause_navigation(self) -> None:
         """
@@ -94,8 +94,7 @@ class NavigationHandler:
 
     def start_navigation_task(
         self,
-        goal_pose: Pose,
-        frame_id: str = "map",
+        goal_pose: PoseStamped,
         success_callback: Optional[callable] = None,
     ) -> None:
         """
@@ -104,20 +103,12 @@ class NavigationHandler:
         It also creates a task to handle the navigation process.
 
         Parameters:
-        - goal_pose (Pose): The goal pose to navigate to.
-        - frame_id (str): The frame ID for the goal pose. Default is "map".
+        - goal_pose (PoseStamped): The goal pose to navigate to.
         - success_callback (callable): Optional callback function to be called on success.
         """
 
-        nav_goal_pose = PoseStamped()
-        nav_goal_pose.header.frame_id = frame_id
-        nav_goal_pose.header.stamp = self.node.get_clock().now().to_msg()
-        nav_goal_pose.pose = goal_pose
-
         # launch the navigation task
-        self.navigation_task = asyncio.create_task(
-            self.navigator.goToPose(nav_goal_pose)
-        )
+        self.navigation_task = asyncio.create_task(self.navigator.goToPose(goal_pose))
         self.logger.debug("Navigation task started")
 
         # add a callback whenever one of the events is triggered

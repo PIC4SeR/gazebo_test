@@ -46,11 +46,9 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python scripts
 install(PROGRAMS
-  scripts/example
-  scripts/example2
-  scripts/example3
+  scripts/experiment_manager
+  scripts/full_experiment
   DESTINATION lib/${PROJECT_NAME}
 )
-
 
 ament_package()
