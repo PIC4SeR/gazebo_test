@@ -20,7 +20,9 @@ def main():
     # Hook argcomplete
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
+    bag_record = args.bag_record
 
+    print(f"Bag record: {bag_record}")
     # Create a new tmux server
     server = libtmux.Server()
     # Check if the session already exists
@@ -81,7 +83,7 @@ def main():
             pane = window.panes[0]
             pane.select()
             pane.send_keys(
-                "ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True; tmux wait-for -S process_finished"
+                f"ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True -p use_recorder:={bag_record}; tmux wait-for -S process_finished"
             )
             print("Started gazebo test")
 

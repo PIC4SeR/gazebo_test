@@ -35,7 +35,7 @@ class ExperimentManager(Node):
         )
 
         timeout_duration = self.declare_parameter("timeout_duration", 20.0).value
-        self.use_recorder = self.declare_parameter("use_recorder", True).value
+        self.use_recorder = self.declare_parameter("use_recorder", False).value
         self.repetitions = self.declare_parameter("repetitions", 1).value
         yaml_path = self.declare_parameter(
             "yaml_path",
