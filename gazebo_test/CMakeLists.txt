@@ -37,6 +37,7 @@ install(DIRECTORY
   goals_and_poses
   worlds
   behavior_trees
+  rviz
   DESTINATION share/${PROJECT_NAME}/
 )
 

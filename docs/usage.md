@@ -2,7 +2,7 @@
 
 This document provides instructions on how to use the `gazebo_test` package for testing Gazebo simulations in ROS2.
 
-## Running Tests
+## Running Tests (Basic Usage)
 
 To run the tests, follow these steps:
 
@@ -31,3 +31,19 @@ TODO: Add the command to run RViz with the appropriate configuration file.
    ```bash
    ros2 launch gazebo_test rviz.launch.py
    ```
+
+## Running Tests (Full Modality)
+
+To run the full test modality, you need to have `tmux` installed. The full test modality allows you to all the previous scripts in a tmux session. To run the full test modality run the following command:
+
+```bash
+ros2 run gazebo_test full_experiment
+```
+
+This will run all the previous scripts in a tmux session.
+
+If you want to see the running scripts in the tmux session, you can attach to the tmux session using the following command:
+
+```bash
+tmux attach -t gazebo_test
+```

@@ -17,16 +17,18 @@ def main():
         "--bag-record", action="store_true", help="Enable bag recording"
     )
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+
+    parser.add_argument(
+        "--detach", action="store_true", help="Detach from tmux session"
+    )
     # Hook argcomplete
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
-    bag_record = args.bag_record
 
-    print(f"Bag record: {bag_record}")
     # Create a new tmux server
     server = libtmux.Server()
     # Check if the session already exists
-    session_name = "nav2_session"
+    session_name = "gazebo_test"
     try:
         if session_name in server.sessions:
             print(f"Session '{session_name}' already exists. Exiting.")
@@ -70,9 +72,7 @@ def main():
             # Start RViz
             pane = window.panes[0]
             pane.select()
-            pane.send_keys(
-                "ros2 run rviz2 rviz2 -d /workspaces/hunavsim_ws/src/adascore/adascore/rviz/jackal.rviz --ros-args -p use_sim_time:=True"
-            )
+            pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
             print("Started RViz")
 
             session.new_window(attach=True)
@@ -83,7 +83,7 @@ def main():
             pane = window.panes[0]
             pane.select()
             pane.send_keys(
-                f"ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True -p use_recorder:={bag_record}; tmux wait-for -S process_finished"
+                f"ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True -p use_recorder:={args.bag_record}; tmux wait-for -S process_finished"
             )
             print("Started gazebo test")
 
@@ -93,9 +93,10 @@ def main():
                 server.cmd("wait-for", "process_finished")
                 print("Gazebo test finished")
                 # retrieve the log of the gazebo test
-                log = pane.capture_pane()
-                print("Captured pane output")
-                print(log)
+                # log = pane.capture_pane()
+                # print("Captured pane output")
+
+                # print(log)
 
             except KeyboardInterrupt:
                 print("Exiting...")
