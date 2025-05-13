@@ -44,26 +44,30 @@ def main():
             window.rename_window("Gazebo")
             print("Created new window: Gazebo")
             # Start the Gazebo simulation
-            pane = window.split(attach=True)
+            # pane = window.split(attach=True)
+            pane = window.panes[0]
+            pane.select()
             pane.send_keys("ros2 launch gazebo_sim simulation.launch.py")
             print("Started Gazebo simulation")
 
-            session.new_window(attach=False, window_name="Navigation")
+            session.new_window(attach=True, window_name="Navigation")
             window = session.active_window
             window.rename_window("Navigation")
             print("Created new window: Navigation")
             # Start the navigation stack
-            pane = window.split(attach=True)
+            pane = window.panes[0]
+            pane.select()
             pane.send_keys("ros2 launch gazebo_test bringup.launch.py")
             print("Started navigation stack")
 
             # Create a new pane for RViz
-            session.new_window(attach=False, window_name="RViz")
+            session.new_window(attach=True, window_name="RViz")
             window = session.active_window
             window.rename_window("RViz")
             print("Created new window: RViz")
             # Start RViz
-            pane = window.split(attach=True)
+            pane = window.panes[0]
+            pane.select()
             pane.send_keys(
                 "ros2 run rviz2 rviz2 -d /workspaces/hunavsim_ws/src/adascore/adascore/rviz/jackal.rviz --ros-args -p use_sim_time:=True"
             )
@@ -74,7 +78,8 @@ def main():
             window.rename_window("gazebo test")
             print("Created new window: gazebo test")
             # Start the gazebo test
-            pane = window.split(attach=True)
+            pane = window.panes[0]
+            pane.select()
             pane.send_keys(
                 "ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True; tmux wait-for -S process_finished"
             )
