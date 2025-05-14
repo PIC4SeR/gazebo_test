@@ -6,6 +6,30 @@ import os
 import time
 import shtab
 import argcomplete
+from pathlib import Path
+import pandas as pd
+
+
+def print_summary(log_path: Path):
+    """
+    Print the summary of the gazebo test.
+    """
+    # Check if the log file exists
+    if not os.path.exists(log_path):
+        print(f"Log file {log_path} does not exist.")
+        return
+
+    # Read the csv file and print the summary in a table format
+    df = pd.read_csv(log_path)
+    # Print the summary of the gazebo test
+    print("Summary of the gazebo test:")
+    print("--------------------------------------------------")
+    print(f"Number of total experiments: {len(df)}")
+    print("--------------------------------------------------")
+    # Print the columns of the dataframe
+    print("--------------------------------------------------")
+    print(df)
+    print("--------------------------------------------------")
 
 
 def main():
@@ -19,7 +43,9 @@ def main():
     parser.add_argument("--headless", action="store_true", help="Run in headless mode")
 
     parser.add_argument(
-        "--detach", action="store_true", help="Detach from tmux session"
+        "--wait-after-finish",
+        action="store_true",
+        help="Wait for the user to press Ctrl+C after the test is finished",
     )
     # Hook argcomplete
     argcomplete.autocomplete(parser)
@@ -93,11 +119,24 @@ def main():
                 server.cmd("wait-for", "process_finished")
                 print("Gazebo test finished")
                 # retrieve the log of the gazebo test
-                # log = pane.capture_pane()
-                # print("Captured pane output")
+                # open a new terminal and run the following command (not in tmux):
+                # tmux attach-session -t gazebo_test:0
+                current_panel = "".join(pane.capture_pane())
+                # get the path of the log file
+                log_path = current_panel.split("saved to ")[-1].split("[")[0]
 
-                # print(log)
+                # remove leading and trailing spaces
+                log_path = log_path.strip()
 
+                print_summary(log_path)
+                # print the summary of the gazebo test
+                # retrieve the log of the gazebo test
+
+                # wait until the keyboard interrupt
+                if args.wait_after_finish:
+                    print("Press Ctrl+C to exit...")
+                    while True:
+                        time.sleep(1)
             except KeyboardInterrupt:
                 print("Exiting...")
 
