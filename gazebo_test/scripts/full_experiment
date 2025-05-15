@@ -119,19 +119,12 @@ def main():
                 server.cmd("wait-for", "process_finished")
                 print("Gazebo test finished")
                 # retrieve the log of the gazebo test
-                # open a new terminal and run the following command (not in tmux):
-                # tmux attach-session -t gazebo_test:0
                 current_panel = "".join(pane.capture_pane())
                 # get the path of the log file
                 log_path = current_panel.split("saved to ")[-1].split("[")[0]
-
                 # remove leading and trailing spaces
                 log_path = log_path.strip()
-
                 print_summary(log_path)
-                # print the summary of the gazebo test
-                # retrieve the log of the gazebo test
-
                 # wait until the keyboard interrupt
                 if args.wait_after_finish:
                     print("Press Ctrl+C to exit...")

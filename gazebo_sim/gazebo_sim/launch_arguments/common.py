@@ -8,7 +8,7 @@ class GazeboCommonArgs:
 
     use_sim_time: DeclareLaunchArgument = DeclareLaunchArgument(
         name="use_sim_time",
-        default_value="False",
+        default_value="True",
         choices=["True", "False"],
         description="Use simulation time.",
     )
