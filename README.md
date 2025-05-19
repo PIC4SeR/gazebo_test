@@ -11,7 +11,7 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
 - ROS2 Humble
 - Gazebo
-- Python 3.8 or higher
+- Python 3.10 or higher
 
 ## Installation
 
@@ -50,3 +50,8 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 ## Usage
 
 Check the [usage documentation](docs/usage.md) for detailed instructions on how to use the framework.
+
+## TODO 
+- Hunav evaluator integration
+- rviz panel for experiment setting
+- config parameters in yaml
