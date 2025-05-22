@@ -18,28 +18,38 @@ import time
 from gazebo_test.utils.navigation_handler import NavigationHandler
 
 from ament_index_python.packages import get_package_share_directory
+from rclpy.parameter import Parameter
 
 
 class ExperimentManager(Node):
     def __init__(self):
         super().__init__("experiment_manager")
 
-        self.algorithm_name = self.declare_parameter("algorithm_name", "test").value
+        self.algorithm_name = self.declare_parameter(
+            "algorithm_name", Parameter.Type.STRING
+        ).value
 
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
-        self.base_path = Path(
-            self.declare_parameter(
-                "base_path",
-                f"/workspaces/hunavsim_ws/bags/gazebo_test/exp_{self.date}/",
-            ).value
+        base_path = self.declare_parameter(
+            "base_path",
+            f"/workspaces/hunavsim_ws/bags/gazebo_test",
+        ).value
+        self.base_path = Path(base_path).joinpath(
+            f"exp_{self.date}/",
         )
 
-        timeout_duration = self.declare_parameter("timeout_duration", 20.0).value
-        self.use_recorder = self.declare_parameter("use_recorder", False).value
-        self.repetitions = self.declare_parameter("repetitions", 1).value
+        timeout_duration = self.declare_parameter(
+            "timeout_duration", Parameter.Type.DOUBLE
+        ).value
+        self.use_recorder = self.declare_parameter(
+            "use_recorder", Parameter.Type.BOOL
+        ).value
+        self.repetitions = self.declare_parameter(
+            "repetitions", Parameter.Type.INTEGER
+        ).value
         yaml_path = self.declare_parameter(
-            "yaml_path",
-            f"{get_package_share_directory('gazebo_test')}/goals_and_poses/social_nav.yaml",
+            "goals_and_poses_file",
+            Parameter.Type.STRING,
         ).value
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)

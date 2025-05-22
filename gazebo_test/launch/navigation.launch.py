@@ -27,13 +27,13 @@ from nav2_common.launch import RewrittenYaml
 from gazebo_test.launch_arguments.navigation import NavigationArgs
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch.launch_utils import parse_launch_config_value
-from launch_pal.arg_utils import LaunchArgumentsBase
+from gazebo_sim.launch.launch_params_subs import LaunchArgumentsBaseParam
 from dataclasses import dataclass
 from launch.actions import OpaqueFunction
 
 
 @dataclass(frozen=True)
-class LaunchArguments(LaunchArgumentsBase):
+class LaunchArguments(LaunchArgumentsBaseParam):
     namespace: DeclareLaunchArgument = GazeboCommonArgs.namespace
     map: DeclareLaunchArgument = NavigationArgs.map
     use_sim_time: DeclareLaunchArgument = GazeboCommonArgs.use_sim_time
