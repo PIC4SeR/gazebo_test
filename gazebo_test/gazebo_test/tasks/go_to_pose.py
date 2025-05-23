@@ -29,13 +29,19 @@ class ExperimentManager(Node):
             "algorithm_name", Parameter.Type.STRING
         ).value
 
+        yaml_path = self.declare_parameter(
+            "goals_and_poses_file",
+            Parameter.Type.STRING,
+        ).value
+
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
         base_path = self.declare_parameter(
             "base_path",
             f"/workspaces/hunavsim_ws/bags/gazebo_test",
         ).value
+        exp_prefix = yaml_path.split("/")[-1].split(".")[0]
         self.base_path = Path(base_path).joinpath(
-            f"exp_{self.date}/",
+            f"{exp_prefix}_exp_{self.date}/",
         )
 
         timeout_duration = self.declare_parameter(
@@ -46,10 +52,6 @@ class ExperimentManager(Node):
         ).value
         self.repetitions = self.declare_parameter(
             "repetitions", Parameter.Type.INTEGER
-        ).value
-        yaml_path = self.declare_parameter(
-            "goals_and_poses_file",
-            Parameter.Type.STRING,
         ).value
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
