@@ -26,7 +26,7 @@ endif()
 ament_python_install_package(${PROJECT_NAME})
 
 install(
-  DIRECTORY launch worlds media models maps config
+  DIRECTORY launch worlds media models config
   DESTINATION share/${PROJECT_NAME}
 )
 

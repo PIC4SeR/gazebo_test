@@ -2,6 +2,7 @@
 robot_name: "jackal" # The name of the robot
 goal_name: "goal_box" # The name of the goal
 initial_pose: [9.0, 9.0, -3.140] # Initial pose of the robot x, y, theta
+map_path: "maps/social_nav_map.yaml" # The path to the map file
 
 episodes: # episodes to be run
   - episode_1
