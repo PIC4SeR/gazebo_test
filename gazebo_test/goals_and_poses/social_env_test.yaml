@@ -1,7 +1,7 @@
 # The robot will be spawned at this position
 robot_name: "jackal" # The name of the robot
 initial_pose: [-0.3, -4.5, 1.57] # Initial pose of the robot x, y, theta
-map_path: "maps/social_env_test.yaml" # The path to the map file
+map_path: "maps/social_env_test_map.yaml" # The path to the map file
 
 episodes: # episodes to be run
   - episode_1
