@@ -47,7 +47,6 @@ def launch_setup(context, *args, **kwargs):
         allow_substs=True,
     )
 
-    print("parameters", parameters)
     node = Node(
         package="gazebo_test",
         executable="experiment_manager",

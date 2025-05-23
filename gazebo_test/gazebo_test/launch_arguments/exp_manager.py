@@ -25,7 +25,7 @@ class ExperimentManagerArgs:
     )
     use_recorder: DeclareLaunchArgument = DeclareLaunchArgument(
         "use_recorder",
-        choices=["true", "false"],
+        choices=["true", "false", "True", "False"],
         default_value="false",
         description="Specify whether to use the bag recorder",
     )

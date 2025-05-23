@@ -9,11 +9,17 @@ class GazeboCommonArgs:
     use_sim_time: DeclareLaunchArgument = DeclareLaunchArgument(
         name="use_sim_time",
         default_value="True",
-        choices=["True", "False"],
+        choices=["True", "False", "true", "false"],
         description="Use simulation time.",
     )
     namespace: DeclareLaunchArgument = DeclareLaunchArgument(
         name="namespace", default_value="", description="Define namespace of the robot."
+    )
+    headless: DeclareLaunchArgument = DeclareLaunchArgument(
+        name="headless",
+        default_value="false",
+        choices=["true", "false", "True", "False"],
+        description="Run Gazebo in headless mode.",
     )
     robot_name: DeclareLaunchArgument = DeclareLaunchArgument(
         "robot_name",

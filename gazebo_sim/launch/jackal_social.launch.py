@@ -14,7 +14,7 @@ from launch_ros.actions import Node
 from launch.event_handlers import OnProcessStart, OnProcessExit, OnProcessIO
 from launch.events.process import ProcessExited
 from launch_pal.include_utils import include_scoped_launch_py_description
-from launch_pal.arg_utils import LaunchArgumentsBase
+from gazebo_sim.launch.launch_params_subs import LaunchArgumentsBaseParam
 from dataclasses import dataclass
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
@@ -23,7 +23,7 @@ from gazebo_sim.launch.launch_utils import path_to_file_in_pkg, map_to_odom_iden
 
 
 @dataclass(frozen=True)
-class LaunchArguments(LaunchArgumentsBase):
+class LaunchArguments(LaunchArgumentsBaseParam):
     agents_configuration_file: DeclareLaunchArgument = (
         HunavArgs.agents_configuration_file
     )
@@ -36,13 +36,15 @@ class LaunchArguments(LaunchArgumentsBase):
     robot_name: DeclareLaunchArgument = HunavArgs.robot_name
     global_frame_to_publish: DeclareLaunchArgument = HunavArgs.global_frame_to_publish
     ignore_models: DeclareLaunchArgument = HunavArgs.ignore_models
-    gzpose_x: DeclareLaunchArgument = GazeboCommonArgs.x
-    gzpose_y: DeclareLaunchArgument = GazeboCommonArgs.y
-    gzpose_Y: DeclareLaunchArgument = GazeboCommonArgs.yaw
+    x: DeclareLaunchArgument = GazeboCommonArgs.x
+    y: DeclareLaunchArgument = GazeboCommonArgs.y
+    yaw: DeclareLaunchArgument = GazeboCommonArgs.yaw
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
     use_collision: DeclareLaunchArgument = HunavArgs.use_collision
     use_gazebo_controllers: DeclareLaunchArgument = RobotArgs.use_gazebo_controllers
     use_collision_sensor: DeclareLaunchArgument = RobotArgs.use_collision_sensor
+    use_lidar_gpu: DeclareLaunchArgument = RobotArgs.use_lidar_gpu
+    headless: DeclareLaunchArgument = GazeboCommonArgs.headless
 
 
 def launch_jackal_gazebo_sim(context, *args, **kwargs):
@@ -56,12 +58,8 @@ def launch_jackal_gazebo_sim(context, *args, **kwargs):
                     pkg_name=LaunchConfiguration("world_pkg_name").perform(context),
                     paths=["worlds", "generatedWorld.world"],
                 ),
-                "use_gazebo_controllers": LaunchConfiguration("use_gazebo_controllers"),
-                "use_collision_sensor": LaunchConfiguration("use_collision_sensor"),
-                "x": LaunchConfiguration("x"),
-                "y": LaunchConfiguration("y"),
-                "yaw": LaunchConfiguration("yaw"),
-            },
+            }
+            | LaunchArguments().launch_configurations_dict(),
         )
     ]
 
@@ -73,22 +71,7 @@ def generate_launch_description():
     hunav_world_generation = include_scoped_launch_py_description(
         pkg_name="gazebo_sim",
         paths=["launch", "hunav_generation.launch.py"],
-        launch_arguments={
-            "config_pkg_name": LaunchConfiguration("config_pkg_name"),
-            "world_pkg_name": LaunchConfiguration("world_pkg_name"),
-            "agents_configuration_file": LaunchConfiguration(
-                "agents_configuration_file"
-            ),
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "base_world": LaunchConfiguration("base_world"),
-            "use_gazebo_obs": LaunchConfiguration("use_gazebo_obs"),
-            "update_rate": LaunchConfiguration("update_rate"),
-            "robot_name": LaunchConfiguration("robot_name"),
-            "global_frame_to_publish": LaunchConfiguration("global_frame_to_publish"),
-            "ignore_models": LaunchConfiguration("ignore_models"),
-            "use_navgoal_to_start": LaunchConfiguration("use_navgoal_to_start"),
-            "use_collision": LaunchConfiguration("use_collision"),
-        },
+        launch_arguments=LaunchArguments().launch_configurations_dict(),
     )
 
     # Then, launch the generated world in Gazebo

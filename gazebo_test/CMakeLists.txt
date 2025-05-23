@@ -35,9 +35,9 @@ install(DIRECTORY
   config
   maps
   goals_and_poses
-  worlds
   behavior_trees
   rviz
+  experiments
   DESTINATION share/${PROJECT_NAME}/
 )
 

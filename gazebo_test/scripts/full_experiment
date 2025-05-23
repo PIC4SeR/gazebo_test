@@ -8,6 +8,8 @@ import shtab
 import argcomplete
 from pathlib import Path
 import pandas as pd
+import yaml
+from ament_index_python.packages import get_package_share_directory
 
 
 def print_summary(log_path: Path):
@@ -32,6 +34,109 @@ def print_summary(log_path: Path):
     print("--------------------------------------------------")
 
 
+def parse_experiment_name(experiment_name: str):
+    """
+    Parse the experiment name and return the world, map, and goals_and_poses.
+    """
+    # Define the path to the experiments directory
+    experiment_file = os.path.join(
+        get_package_share_directory("gazebo_test"),
+        "experiments",
+        "experiments.yaml",
+    )
+    # Check if the file exists
+    if not os.path.exists(experiment_file):
+        raise FileNotFoundError(f"File {experiment_file} does not exist.")
+
+    # Load the YAML file
+    with open(experiment_file, "r") as file:
+        experiments = yaml.safe_load(file)
+    # Check if the experiment name exists in the file
+    if experiment_name not in experiments:
+        raise ValueError(f"Experiment {experiment_name} does not exist in the file.")
+
+    # Get the world, map, and goals_and_poses from the file
+    world = experiments[experiment_name]["world"]
+    map = experiments[experiment_name]["map"]
+    goals_and_poses = experiments[experiment_name]["goals_and_poses"]
+    world_pkg_name = experiments[experiment_name]["world_pkg_name"]
+    world_pkg_path = os.path.join(
+        get_package_share_directory(world_pkg_name),
+        "worlds",
+        world,
+    )
+    agents_configuration_file = experiments[experiment_name][
+        "agents_configuration_file"
+    ]
+    agents_pkg_name = experiments[experiment_name]["config_pkg_name"]
+    agents_pkg_path = os.path.join(
+        get_package_share_directory(agents_pkg_name),
+        "config",
+        agents_configuration_file,
+    )
+
+    # check if the world, map, and goals_and_poses are absolute paths
+    if not os.path.isabs(map):
+        map = os.path.join(
+            get_package_share_directory("gazebo_test"),
+            map,
+        )
+    if not os.path.isabs(goals_and_poses):
+        goals_and_poses = os.path.join(
+            get_package_share_directory("gazebo_test"),
+            goals_and_poses,
+        )
+    # Check if the world, map, and goals_and_poses exist
+    if not os.path.exists(world_pkg_path):
+        raise FileNotFoundError(f"World file {world_pkg_path} does not exist.")
+    if not os.path.exists(map):
+        raise FileNotFoundError(f"Map file {map} does not exist.")
+    if not os.path.exists(goals_and_poses):
+        raise FileNotFoundError(
+            f"Goals and poses file {goals_and_poses} does not exist."
+        )
+    if not os.path.exists(agents_pkg_path):
+        raise FileNotFoundError(
+            f"Agents configuration file {agents_pkg_path} does not exist."
+        )
+    return (
+        world,
+        map,
+        goals_and_poses,
+        agents_configuration_file,
+        world_pkg_name,
+        agents_pkg_name,
+    )
+
+
+def setup_argcomplete():
+    """
+    Setup argcomplete for the script.
+    """
+    # Get the path to the experiments directory
+    experiments_dir = os.path.join(
+        get_package_share_directory("gazebo_test"),
+        "experiments",
+    )
+    # Check if the directory exists
+    if not os.path.exists(experiments_dir):
+        raise FileNotFoundError(f"Directory {experiments_dir} does not exist.")
+
+    # Get the list of files in the directory
+    files = os.listdir(experiments_dir)
+    # Filter the files to only include YAML files
+    yaml_files = [f for f in files if f.endswith(".yaml")]
+    # Get the names of the experiments from the YAML files
+    experiment_names = [f.split(".")[0] for f in yaml_files]
+
+    # Register the completion function
+    shtab.register_completion(
+        "experiment",
+        choices=experiment_names,
+        help="The name of the experiment to run",
+    )
+
+
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
@@ -40,13 +145,38 @@ def main():
     parser.add_argument(
         "--bag-record", action="store_true", help="Enable bag recording"
     )
-    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    parser.add_argument(
+        "--headless", action="store_true", help="Run Gazebo in headless mode"
+    )
+
+    parser.add_argument("--no-rviz", action="store_true", help="Do not start RViz")
 
     parser.add_argument(
         "--wait-after-finish",
         action="store_true",
         help="Wait for the user to press Ctrl+C after the test is finished",
     )
+
+    parser.add_argument(
+        "experiment",
+        action="store",
+        default="social_nav",
+        help="The name of the experiment to run",
+    )
+    # Setup argcomplete
+    # setup_argcomplete()
+    # Add the completion function for the experiment argument
+
+    # world, map, goals_and_poses = parse_experiment_name(parser.parse_args().experiment)
+    (
+        world,
+        map,
+        goals_and_poses,
+        agents_configuration_file,
+        world_pkg_name,
+        agents_pkg_name,
+    ) = parse_experiment_name(parser.parse_args().experiment)
+
     # Hook argcomplete
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
@@ -77,7 +207,10 @@ def main():
             # pane = window.split(attach=True)
             pane = window.panes[0]
             pane.select()
-            pane.send_keys("ros2 launch gazebo_sim simulation.launch.py")
+            pane.send_keys(
+                f"ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
+                    agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name}"
+            )
             print("Started Gazebo simulation")
 
             session.new_window(attach=True, window_name="Navigation")
@@ -87,19 +220,20 @@ def main():
             # Start the navigation stack
             pane = window.panes[0]
             pane.select()
-            pane.send_keys("ros2 launch gazebo_test bringup.launch.py")
+            pane.send_keys(f"ros2 launch gazebo_test bringup.launch.py map:={map}")
             print("Started navigation stack")
 
             # Create a new pane for RViz
-            session.new_window(attach=True, window_name="RViz")
-            window = session.active_window
-            window.rename_window("RViz")
-            print("Created new window: RViz")
-            # Start RViz
-            pane = window.panes[0]
-            pane.select()
-            pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
-            print("Started RViz")
+            if not args.no_rviz:
+                session.new_window(attach=True, window_name="RViz")
+                window = session.active_window
+                window.rename_window("RViz")
+                print("Created new window: RViz")
+                # Start RViz
+                pane = window.panes[0]
+                pane.select()
+                pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
+                print("Started RViz")
 
             session.new_window(attach=True)
             window = session.active_window
@@ -109,7 +243,8 @@ def main():
             pane = window.panes[0]
             pane.select()
             pane.send_keys(
-                f"ros2 run gazebo_test experiment_manager --ros-args -p use_sim_time:=True -p use_recorder:={args.bag_record}; tmux wait-for -S process_finished"
+                f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
+                    goals_and_poses_file:={goals_and_poses} ; tmux wait-for -S process_finished"
             )
             print("Started gazebo test")
 

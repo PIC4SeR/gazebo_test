@@ -131,13 +131,13 @@ class ExperimentEvaluator:
         """
         # assure that the message is arrived after the start time
         if not self.start_time:
-            self.logger.debug("Collision message arrived before start time")
+            self.logger.info("Collision message arrived before start time")
             return
-        self.logger.debug(
+        self.logger.info(
             f"Collision message arrived at: {Time.from_msg(msg.header.stamp) - self.start_time}"
         )
         if Time.from_msg(msg.header.stamp) <= self.start_time:
-            self.logger.debug("Collision message arrived before start time")
+            self.logger.info("Collision message arrived before start time")
             return
 
         if self.collision_event.is_set():
