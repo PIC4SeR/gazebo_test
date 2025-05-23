@@ -52,7 +52,7 @@ class HunavArgs:
     )
     agents_configuration_file = DeclareLaunchArgument(
         "agents_configuration_file",
-        default_value="social_nav.yaml",
+        default_value="agents_envs/social_nav.yaml",
         description="Specify configuration file name in the config directory",
     )
 
