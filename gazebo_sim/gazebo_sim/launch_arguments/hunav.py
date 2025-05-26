@@ -41,7 +41,7 @@ class HunavArgs:
 
     update_rate: DeclareLaunchArgument = DeclareLaunchArgument(
         "update_rate",
-        default_value="100.0",
+        default_value="40.0",
         description="Update rate of the hunav plugin in Hz",
     )
 

@@ -20,7 +20,7 @@ class RobotArgs:
     )
     use_lidar_gpu: DeclareLaunchArgument = DeclareLaunchArgument(
         "use_lidar_gpu",
-        default_value="false",
+        default_value="true",
         choices=["true", "false", "True", "False"],
         description="Whether to use GPU for LIDAR processing or not",
     )
