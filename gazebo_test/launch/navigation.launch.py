@@ -43,13 +43,13 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     container_name: DeclareLaunchArgument = NavigationArgs.container_name
     use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
     log_level: DeclareLaunchArgument = NavigationArgs.log_level
-    only_planning: DeclareLaunchArgument = NavigationArgs.only_planning
+    no_controller: DeclareLaunchArgument = NavigationArgs.no_controller
 
 
 def lifecycle_nodes(context, *args, **kwargs):
     """Return the list of lifecycle nodes to be launched."""
 
-    only_planning = LaunchConfiguration("only_planning")
+    no_controller = LaunchConfiguration("no_controller")
     use_composition = LaunchConfiguration("use_composition")
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
@@ -58,16 +58,13 @@ def lifecycle_nodes(context, *args, **kwargs):
         "smoother_server",
         "planner_server",
         "map_server",
+        "behavior_server",
+        "bt_navigator",
+        "velocity_smoother",
     ]
-    if not parse_launch_config_value(only_planning.perform(context)):
+    if not parse_launch_config_value(no_controller.perform(context)):
         lifecycle_nodes += [
             "controller_server",
-            "smoother_server",
-            "planner_server",
-            "behavior_server",
-            "bt_navigator",
-            "velocity_smoother",
-            "map_server",
         ]
 
     return [
@@ -118,7 +115,7 @@ def generate_launch_description():
     container_name_full = (namespace, "/", container_name)
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
-    only_planning = LaunchConfiguration("only_planning")
+    no_controller = LaunchConfiguration("no_controller")
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -160,7 +157,7 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=["--ros-args", "--log-level", log_level],
-                condition=UnlessCondition(only_planning),
+                condition=UnlessCondition(no_controller),
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
             Node(
@@ -193,7 +190,6 @@ def generate_launch_description():
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
-                condition=UnlessCondition(only_planning),
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
             ),
@@ -206,7 +202,6 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=["--ros-args", "--log-level", log_level],
-                condition=UnlessCondition(only_planning),
                 remappings=remappings,
             ),
             Node(
@@ -218,7 +213,6 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=["--ros-args", "--log-level", log_level],
-                condition=UnlessCondition(only_planning),
                 remappings=remappings
                 + [("cmd_vel", "cmd_vel_nav"), ("cmd_vel_smoothed", "cmd_vel")],
             ),
@@ -246,7 +240,6 @@ def generate_launch_description():
                 name="controller_server",
                 parameters=[configured_params],
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
-                condition=UnlessCondition(only_planning),
             ),
             ComposableNode(
                 package="nav2_smoother",
@@ -268,7 +261,6 @@ def generate_launch_description():
                 name="behavior_server",
                 parameters=[configured_params],
                 remappings=remappings,
-                condition=UnlessCondition(only_planning),
             ),
             ComposableNode(
                 package="nav2_bt_navigator",
@@ -276,7 +268,6 @@ def generate_launch_description():
                 name="bt_navigator",
                 parameters=[configured_params],
                 remappings=remappings,
-                condition=UnlessCondition(only_planning),
             ),
             ComposableNode(
                 package="nav2_velocity_smoother",
@@ -285,7 +276,6 @@ def generate_launch_description():
                 parameters=[configured_params],
                 remappings=remappings
                 + [("cmd_vel", "cmd_vel_nav"), ("cmd_vel_smoothed", "cmd_vel")],
-                condition=UnlessCondition(only_planning),
             ),
             ComposableNode(
                 package="nav2_map_server",

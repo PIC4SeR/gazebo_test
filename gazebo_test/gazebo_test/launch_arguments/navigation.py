@@ -66,9 +66,9 @@ class NavigationArgs:
         description="Log level for the nodes",
     )
 
-    only_planning: DeclareLaunchArgument = DeclareLaunchArgument(
+    no_controller: DeclareLaunchArgument = DeclareLaunchArgument(
         "only_planning",
         default_value="false",
         choices=["true", "false"],
-        description="Whether to only run the planning nodes",
+        description="Whether to launch the controller or not (only planning nodes will be launched if true)",
     )

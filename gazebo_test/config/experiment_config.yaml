@@ -9,4 +9,4 @@ experiment_manager:
     timeout_duration: 60.0
     repetitions: 1
     goals_and_poses_file: "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_test/goals_and_poses/social_nav.yaml"
-      
+    no_controller:  #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use nav2 planner to plan the path and the controller will not be used)

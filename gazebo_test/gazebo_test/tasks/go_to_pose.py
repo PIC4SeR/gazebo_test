@@ -1,4 +1,5 @@
 from rclpy.node import Node
+import rclpy
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
@@ -94,6 +95,8 @@ class ExperimentManager(Node):
         )
         self.end = False
         self.get_logger().info("ExperimentManager initialized")
+        # set log level to debug
+        # self.get_logger().set_level(rclpy.logging.LoggingSeverity.DEBUG)
 
     async def initialize(self):
         # Placeholder for initialization logic

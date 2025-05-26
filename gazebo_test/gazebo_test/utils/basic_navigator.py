@@ -434,7 +434,7 @@ class BasicNavigator:
         self.logger.debug("All action servers are available.")
         for srv in [
             self.clear_costmap_global_srv,
-            self.clear_costmap_local_srv,
+            # self.clear_costmap_local_srv,
         ]:
             while not srv.wait_for_service(timeout_sec=1.0):
                 self.logger.debug(f"{srv.srv_name} service not available, waiting...")
