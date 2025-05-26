@@ -67,7 +67,7 @@ class NavigationArgs:
     )
 
     no_controller: DeclareLaunchArgument = DeclareLaunchArgument(
-        "only_planning",
+        "no_controller",
         default_value="false",
         choices=["true", "false"],
         description="Whether to launch the controller or not (only planning nodes will be launched if true)",
