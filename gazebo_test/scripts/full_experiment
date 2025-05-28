@@ -158,6 +158,12 @@ def main():
     )
 
     parser.add_argument(
+        "--no-gpu",
+        action="store_true",
+        help="Do not use GPU for rendering (use CPU instead)",
+    )
+
+    parser.add_argument(
         "experiment",
         action="store",
         default="social_nav",
@@ -198,8 +204,6 @@ def main():
             print(f"Created new session: {session_name}")
 
             # Create a window for gazebo simulation
-            # session.new_window(attach=False, window_name="Gazebo")
-
             window = session.active_window
             window.rename_window("Gazebo")
             print("Created new window: Gazebo")
@@ -207,9 +211,15 @@ def main():
             # pane = window.split(attach=True)
             pane = window.panes[0]
             pane.select()
+            gpu_env_var = (
+                "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 "
+                if not args.no_gpu
+                else ""
+            )
             pane.send_keys(
-                f"ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
-                    agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name}"
+                f"{gpu_env_var}ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
+                    agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name} \
+                        use_lidar_gpu:={not args.no_gpu}"
             )
             print("Started Gazebo simulation")
 
