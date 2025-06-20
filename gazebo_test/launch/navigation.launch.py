@@ -239,6 +239,7 @@ def generate_launch_description():
                 plugin="nav2_controller::ControllerServer",
                 name="controller_server",
                 parameters=[configured_params],
+                condition=UnlessCondition(no_controller),
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
             ComposableNode(

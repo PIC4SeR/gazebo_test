@@ -29,6 +29,12 @@ class ExperimentManagerArgs:
         default_value="false",
         description="Specify whether to use the bag recorder",
     )
+    use_evaluator: DeclareLaunchArgument = DeclareLaunchArgument(
+        "use_evaluator",
+        choices=["true", "false", "True", "False"],
+        default_value="false",
+        description="Specify whether to use the hunav evaluator",
+    )
     repetitions: DeclareLaunchArgument = DeclareLaunchArgument(
         "repetitions",
         default_value="",

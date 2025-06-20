@@ -28,6 +28,7 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     base_path: DeclareLaunchArgument = ExperimentManagerArgs.base_path
     timeout_duration: DeclareLaunchArgument = ExperimentManagerArgs.timeout_duration
     use_recorder: DeclareLaunchArgument = ExperimentManagerArgs.use_recorder
+    use_evaluator: DeclareLaunchArgument = ExperimentManagerArgs.use_evaluator
     repetitions: DeclareLaunchArgument = ExperimentManagerArgs.repetitions
     goals_and_poses_file: DeclareLaunchArgument = (
         ExperimentManagerArgs.goals_and_poses_file

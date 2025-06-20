@@ -3,6 +3,7 @@ import rclpy
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
+from gazebo_test.utils.hunav_handler import HunavEvaluatortHandler
 from gazebo_test.utils.bag_recorder import BagRecorder
 from gazebo_test.utils.common_utils import (
     parse_entity_state_yaml,
@@ -15,7 +16,6 @@ from pathlib import Path
 import pandas as pd
 import time
 
-# from gazebo_test.utils.basic_navigator import BasicNavigator
 from gazebo_test.utils.navigation_handler import NavigationHandler
 
 from ament_index_python.packages import get_package_share_directory
@@ -51,6 +51,9 @@ class ExperimentManager(Node):
         self.use_recorder = self.declare_parameter(
             "use_recorder", Parameter.Type.BOOL
         ).value
+        self.use_evaluator = self.declare_parameter(
+            "use_evaluator", Parameter.Type.BOOL
+        ).value
         self.repetitions = self.declare_parameter(
             "repetitions", Parameter.Type.INTEGER
         ).value
@@ -64,6 +67,11 @@ class ExperimentManager(Node):
             self.bag_recorder = BagRecorder(
                 self, algorithm=self.algorithm_name, base_path=self.base_path
             )
+        if self.use_evaluator:
+            self.hunav_evaluator_handler = HunavEvaluatortHandler(
+                self, algorithm=self.algorithm_name, base_path=self.base_path
+            )
+
         self.navigator = NavigationHandler(
             node=self,
             success_callback=self.evaluation_handler.set_success_event,
@@ -71,10 +79,6 @@ class ExperimentManager(Node):
 
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
-
-        self.experiment_outcomes: pd.DataFrame = pd.DataFrame(
-            columns=["episode", "run", "result"]
-        )
 
         self.experiment_outcomes_path = Path(
             f"{self.base_path.resolve()}/{self.algorithm_name}_outcomes.csv"
@@ -109,48 +113,63 @@ class ExperimentManager(Node):
         self.get_logger().debug("Navigation stack initialized")
         self.evaluation_handler.initialize()
         self.get_logger().debug("Experiment evaluator initialized")
+        if self.use_evaluator:
+            await self.hunav_evaluator_handler.wait_for_hunav_evaluator()
+            self.get_logger().debug("Hunav evaluator handler initialized")
 
     async def run_experiments(self):
         """
         Run the experiments sequentially.
-        This method will run the experiments for each episode defined in the YAML file.
+        This method will run the experiments for each experiment_tag defined in the YAML file.
         """
         self.get_logger().debug("Running experiments ...")
-        for episode in self.initial_state_entities.keys():
-            self.get_logger().info(f"Starting {episode}")
+        for experiment_tag in self.initial_state_entities.keys():
+            self.get_logger().info(f"Starting {experiment_tag}")
             for i in range(self.repetitions):
-                result = await self.run_experiment(episode, i + 1)
+                result = await self.run_experiment(experiment_tag, i + 1)
                 self.get_logger().info(
-                    f"Run {i + 1} for {episode} completed with result: {result}"
+                    f"Run {i + 1} for {experiment_tag} completed with result: {result}"
                 )
                 # Save the result to the DataFrame
-                self.experiment_outcomes = pd.concat(
-                    [
-                        self.experiment_outcomes,
-                        pd.DataFrame(
-                            {
-                                "episode": [episode],
-                                "run": [i + 1],
-                                "result": [result],
-                            }
-                        ),
-                    ],
-                    ignore_index=True,
+                experiment_outcome = pd.DataFrame(
+                    {
+                        "experiment_tag": [experiment_tag],
+                        "run_id": [i + 1],
+                        "result": [result],
+                    }
                 )
+                if self.use_evaluator:
+                    # Add additional columns for hunav evaluator results
+                    hunav_results = self.hunav_evaluator_handler.get_result_df()
+                    # Merge hunav results into the DataFrame
+                    experiment_outcome = pd.merge(
+                        experiment_outcome,
+                        hunav_results,
+                        on=["experiment_tag", "run_id"],
+                        how="left",
+                    )
+
+                # Append the result to the CSV file
+                experiment_outcome.to_csv(
+                    self.experiment_outcomes_path,
+                    mode="a",
+                    header=not self.experiment_outcomes_path.exists(),
+                    index=False,
+                )
+
         await self.navigator.shutdown_navigation()
         self.get_logger().info("All experiments completed")
         # Save the experiment outcomes to a CSV file
-        self.experiment_outcomes.to_csv(self.experiment_outcomes_path, index=False)
         self.get_logger().info(
             f"Experiment outcomes saved to {self.experiment_outcomes_path}"
         )
         self.end = True
 
     async def run_experiment(
-        self, episode: str = "episode_1", run_id: int = 1
+        self, experiment_tag: str = "episode_1", run_id: int = 1
     ) -> ExperimentResult:
         """
-        Run the experiment for a given episode.
+        Run the experiment for a given experiment_tag.
         This method will reset the environment, start the experiment, and return the result.
         The experiment is considered successful if the robot reaches the goal
         without any collisions and within the timeout duration.
@@ -158,19 +177,21 @@ class ExperimentManager(Node):
         - A collision is detected with an agent or the environment
         - The timeout duration is reached
         Args:
-            episode (str): The episode to run.
+            experiment_tag (str): The experiment_tag to run.
             run_id (int): The run ID for the experiment.
         Returns:
             ExperimentResult: The result of the experiment.
         """
         # Placeholder for experiment running logic
         entities_to_reset = [
-            self.initial_state_entities[episode],
+            self.initial_state_entities[experiment_tag],
         ]
-        goal_pose = get_posestamped_from_entity(self.goal_entities[episode], "map")
+        goal_pose = get_posestamped_from_entity(
+            self.goal_entities[experiment_tag], "map"
+        )
         await self.gazebo_env_handler.reset_environment_for_experiment(
             entities_to_reset,
-            goal_entity=self.goal_entities[episode],
+            goal_entity=self.goal_entities[experiment_tag],
             goal_xml=self.goal_box_xml,
         )
         await self.navigator.reset_navigation()
@@ -185,9 +206,16 @@ class ExperimentManager(Node):
         if self.use_recorder:
             self.get_logger().debug("Starting recording ...")
             self.bag_recorder.start_recording_and_set_goal(
-                experiment_name=episode,
+                experiment_name=experiment_tag,
                 run_id=str(run_id),
                 goal=goal_pose,
+            )
+        if self.use_evaluator:
+            self.get_logger().info("Starting hunav evaluator recording ...")
+            await self.hunav_evaluator_handler.start_recording(
+                goal=goal_pose,
+                experiment_tag=experiment_tag,
+                run_id=run_id,
             )
 
         experiment_result = await self.evaluation_handler.run_experiment()
@@ -198,6 +226,12 @@ class ExperimentManager(Node):
                 result=str(experiment_result)
             )
             self.get_logger().debug("Recording stopped")
-        self.get_logger().debug(f"Run result: {experiment_result}")
+        if self.use_evaluator:
+            await self.hunav_evaluator_handler.stop_recording()
+            self.get_logger().info("Hunav evaluator recording stopped")
+        # Log the experiment result
+        self.get_logger().debug(
+            f"Experiment {experiment_tag} run {run_id} completed with result: {experiment_result}"
+        )
         await self.navigator.cancel_navigation()
         return experiment_result

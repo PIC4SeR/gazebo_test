@@ -45,7 +45,7 @@ class BagRecorder:
         self.base_path = base_path
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
         if not self.base_path:
-            self.base_path = Path("bags/gazebo_test/exp_{self.date}/")
+            self.base_path = Path(f"bags/gazebo_test/exp_{self.date}/")
         self.node = node
         self.writer = rosbag2_py.SequentialWriter()
         self.recording = False

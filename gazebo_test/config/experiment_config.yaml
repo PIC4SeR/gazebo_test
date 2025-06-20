@@ -4,6 +4,7 @@ experiment_manager:
     # The parameters like use_sim_time and use_recorder are placeholders needed to be set in the launch file
     use_sim_time: #THIS IS SET IN THE LAUNCH FILE (default: True) Since the simulation is running in Gazebo, we need to set this to True
     use_recorder: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will record the bag files)
+    use_evaluator: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use the hunav evaluator to compute the metrics)
     algorithm_name: "test_algorithm"
     base_path: "/workspaces/hunavsim_ws/bags/gazebo_test"
     timeout_duration: 60.0
