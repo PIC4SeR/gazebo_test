@@ -33,7 +33,6 @@ class TaskResult(Enum):
 
 class BasicNavigator:
 
-    # def __init__(self, node: Node, success_callback: Optional[callable] = None):
     def __init__(self, node: Node):
 
         self.node = node
@@ -53,8 +52,6 @@ class BasicNavigator:
 
         self.go_to_pose_event = asyncio.Event()
         self.follow_path_event = asyncio.Event()
-
-        # self.success_callback = success_callback
 
         # for now allow only the nav_to_pose action
         self.nav_to_pose_client = ActionClient(
@@ -131,7 +128,6 @@ class BasicNavigator:
             return False
 
         self.go_to_pose_result = self.go_to_pose_goal_handle.get_result_async()
-        # self.go_to_pose_goal_handle.add_done_callback(self._go_to_pose_result_callback)
         self.go_to_pose_result.add_done_callback(self._go_to_pose_result_callback)
         return True
 
@@ -170,25 +166,6 @@ class BasicNavigator:
         self.logger.debug("Canceling current task.")
         if self.go_to_pose_result:
             future = await self.go_to_pose_goal_handle.cancel_goal_async()
-
-    async def isGoToPoseComplete(self) -> bool:
-        """Check if the `NavToPose` action request is complete yet.
-        This will check the status of the current task and set the status to
-        CANCELED if the task was canceled.
-        Returns:
-            bool: True if the task is complete, False otherwise.
-        """
-        if not self.go_to_pose_result:
-            # task was cancelled or completed
-            return True
-        try:
-            result = await asyncio.wait_for(self.go_to_pose_result, timeout=0.1)
-            if result.status != GoalStatus.STATUS_SUCCEEDED:
-                self.logger.debug(f"Task failed with status code: {result.status}")
-            return True
-        except asyncio.TimeoutError:
-            # Timed out, still processing, not complete yet
-            return False
 
     def getFeedback(self):
         """Get the pending action feedback message."""
@@ -434,7 +411,7 @@ class BasicNavigator:
         self.logger.debug("All action servers are available.")
         for srv in [
             self.clear_costmap_global_srv,
-            # self.clear_costmap_local_srv,
+            self.clear_costmap_local_srv,
         ]:
             while not srv.wait_for_service(timeout_sec=1.0):
                 self.logger.debug(f"{srv.srv_name} service not available, waiting...")
@@ -444,15 +421,13 @@ class BasicNavigator:
     def _go_to_pose_result_callback(self, future):
         self.logger.debug("Received action result message")
         self.go_to_pose_result = future.result()
-        status = self.getResult(self.go_to_pose_result)
-        self.logger.debug(f"Go to pose status: {status}")
-        # self.go_to_pose_event.set()
+        self.go_to_pose_status = self.getResult(self.go_to_pose_result)
+        self.logger.debug(f"Go to pose status: {self.go_to_pose_status}")
         self._loop.call_soon_threadsafe(self.go_to_pose_event.set)
 
     def _follow_path_result_callback(self, future):
         self.logger.debug("Received action result message")
         self.follow_path_result = future.result()
-        status = self.getResult(self.follow_path_result)
-        self.logger.debug(f"Follow path status: {status}")
-        # self.follow_path_event.set()
+        self.follow_path_status = self.getResult(self.follow_path_result)
+        self.logger.debug(f"Follow path status: {self.follow_path_status}")
         self._loop.call_soon_threadsafe(self.follow_path_event.set)

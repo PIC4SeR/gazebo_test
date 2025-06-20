@@ -74,7 +74,7 @@ class ExperimentManager(Node):
 
         self.navigator = NavigationHandler(
             node=self,
-            success_callback=self.evaluation_handler.set_success_event,
+            navigation_result_callback=self.evaluation_handler.set_navigation_result_event,
         )
 
         self.initial_state_entities: Dict[str, EntityState] = {}
@@ -199,7 +199,7 @@ class ExperimentManager(Node):
         # create task to wait for the robot to reach the goal
         self.navigator.start_navigation_task(
             goal_pose=goal_pose,
-            success_callback=self.evaluation_handler.set_success_event,
+            navigation_result_callback=self.evaluation_handler.set_navigation_result_event,
         )
         self.get_logger().debug("Environment reset successfully")
 

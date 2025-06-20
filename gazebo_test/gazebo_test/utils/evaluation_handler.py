@@ -21,7 +21,8 @@ class ExperimentResult(Enum):
     FAILURE_COLLISION_ENVIRONMENT = 2
     FAILURE_COLLISION_AGENT = 3
     FAILURE_TIMEOUT = 4
-    RESULT_NOT_SET = 5
+    FAILURE_NAVIGATION = 5
+    RESULT_NOT_SET = 6
 
     def __str__(self):
         match self:
@@ -33,6 +34,8 @@ class ExperimentResult(Enum):
                 return "Failure: Collision with agent"
             case ExperimentResult.FAILURE_TIMEOUT:
                 return "Failure: Timeout"
+            case ExperimentResult.FAILURE_NAVIGATION:
+                return "Failure: Navigation failure"
             case ExperimentResult.RESULT_NOT_SET:
                 return "Result not set"
 
@@ -59,7 +62,7 @@ class ExperimentEvaluator:
         """
 
         # use asyncio event to notify the experiment that a collision has been detected
-        self.success_event = asyncio.Event()
+        self.navigation_result_event = asyncio.Event()
         self.collision_event = asyncio.Event()
         self.timeout_event = asyncio.Event()
 
@@ -83,7 +86,7 @@ class ExperimentEvaluator:
         # self._loop = loop
         # unset all events
         self.collision_event.clear()
-        self.success_event.clear()
+        self.navigation_result_event.clear()
         self.timeout_event.clear()
 
         self.start_time = self.get_clock().now()
@@ -93,11 +96,11 @@ class ExperimentEvaluator:
         self.logger.debug(f"Start time: {self.start_time}")
         self._create_timeout_timer()
 
-        # Wait for one of: collision_event, success_event, or timeout
+        # Wait for one of: collision_event, navigation_result_event, or timeout
         done, pending = await asyncio.wait(
             [
                 self.collision_event.wait(),
-                self.success_event.wait(),
+                self.navigation_result_event.wait(),
                 self.timeout_event.wait(),
             ],
             return_when=asyncio.FIRST_COMPLETED,
@@ -167,8 +170,19 @@ class ExperimentEvaluator:
             self._on_timeout,
         )
 
-    def set_success_event(self):
-        """Set the success event."""
+    def set_navigation_result_event(self, success: bool) -> None:
+        """Set the success event based on the navigation result.
+        This method is called when the navigation task is completed.
+        If the navigation is successful, it sets the success_event.
+        If the navigation fails, it sets the experiment_result to FAILURE_NAVIGATION.
+        Args:
+            success (bool): True if the navigation was successful, False otherwise.
+        """
+        if not success:
+            self.logger.debug("Navigation failed, setting failure event")
+            self.experiment_result = ExperimentResult.FAILURE_NAVIGATION
+            self._loop.call_soon_threadsafe(self.collision_event.set)
+            return
         self.experiment_result = ExperimentResult.SUCCESS
-        self._loop.call_soon_threadsafe(self.success_event.set)
-        self.logger.debug("Success event set")
+        self._loop.call_soon_threadsafe(self.navigation_result_event.set)
+        self.logger.debug("Navigation successful, setting success event")

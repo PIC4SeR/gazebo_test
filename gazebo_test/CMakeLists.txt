@@ -15,7 +15,7 @@ find_package(std_srvs REQUIRED)
 #display a warning if hunav_sim is not found
 
 if(NOT hunav_sim_FOUND)
-  message(WARNING "hunav_sim not found. this is fine for testing in real world, but not for simulation and training")
+  message(WARNING "hunav_sim not found. this is fine for testing worlds and experiments, but without human simulation")
 endif()
 
 if(BUILD_TESTING)

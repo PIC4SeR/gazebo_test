@@ -1,8 +1,5 @@
 from rclpy.node import Node
-from rclpy.qos import QoSProfile
-from rclpy.qos import QoSDurabilityPolicy
-from rclpy.qos import QoSHistoryPolicy
-from gazebo_test.utils.basic_navigator import BasicNavigator
+from gazebo_test.utils.basic_navigator import BasicNavigator, TaskResult
 import rclpy
 from geometry_msgs.msg import PoseStamped, Pose
 from typing import Optional
@@ -16,7 +13,7 @@ class NavigationHandler:
     It provides methods to reset the navigation stack and manage its lifecycle.
     """
 
-    def __init__(self, node: Node, success_callback=None) -> None:
+    def __init__(self, node: Node, navigation_result_callback=None) -> None:
         self.node = node
         self._loop = None
         self.navigator = BasicNavigator(
@@ -25,7 +22,7 @@ class NavigationHandler:
         self.logger = rclpy.logging.get_logger("navigation_handler")
         # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
         self.navigation_task = None
-        self._default_success_callback = success_callback
+        self._default_navigation_result_callback = navigation_result_callback
 
     async def initialize_navigation(self) -> None:
         """
@@ -95,7 +92,7 @@ class NavigationHandler:
     def start_navigation_task(
         self,
         goal_pose: PoseStamped,
-        success_callback: Optional[callable] = None,
+        navigation_result_callback: Optional[callable] = None,
     ) -> None:
         """
         Starts the navigation task by sending a goal to the navigator.
@@ -104,7 +101,7 @@ class NavigationHandler:
 
         Parameters:
         - goal_pose (PoseStamped): The goal pose to navigate to.
-        - success_callback (callable): Optional callback function to be called on success.
+        - navigation_result_callback (callable): Optional callback function to be called on success.
         """
 
         # launch the navigation task
@@ -113,7 +110,7 @@ class NavigationHandler:
 
         # add a callback whenever one of the events is triggered
         self.wait_for_events_task = asyncio.create_task(
-            self.wait_for_events(success_callback)
+            self.wait_for_events(navigation_result_callback)
         )
 
     async def wait_for_events(self, callback: Optional[callable] = None) -> None:
@@ -135,10 +132,11 @@ class NavigationHandler:
             task.cancel()
         self.logger.debug("Event triggered")
         # Call the callback function with the triggered event
+        success = self.navigator.go_to_pose_status == TaskResult.SUCCEEDED
         if callback:
-            callback()
+            callback(success)
         else:
-            self._default_success_callback()
+            self._default_navigation_result_callback(success)
 
     async def shutdown_navigation(self) -> None:
         """
