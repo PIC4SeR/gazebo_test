@@ -26,6 +26,8 @@ def print_summary(log_path: Path):
     # Print the summary of the gazebo test
     print("Summary of the gazebo test:")
     print("--------------------------------------------------")
+    print(f"Log file: {log_path}")
+    print("--------------------------------------------------")
     print(f"Number of total experiments: {len(df)}")
     print("--------------------------------------------------")
     # Print the columns of the dataframe
@@ -174,6 +176,47 @@ def main():
         default="social_nav",
         help="The name of the experiment to run",
     )
+
+    parser.add_argument(
+        "--nav-params",
+        action="store",
+        default=os.path.join(
+            get_package_share_directory("gazebo_test"),
+            "config",
+            "nav2_params.yaml",
+        ),
+        help="The path to the navigation parameters file",
+    )
+
+    parser.add_argument(
+        "--evaluation-metrics-file",
+        action="store",
+        default=os.path.join(
+            get_package_share_directory("hunav_evaluator"),
+            "config",
+            "metrics.yaml",
+        ),
+        help="The path to the evaluation metrics file",
+    )
+
+    parser.add_argument(
+        "--no-controller",
+        action="store_true",
+        help="Do not start the navigation controller",
+    )
+
+    parser.add_argument(
+        "--base-path-for-results",
+        action="store",
+        default=None,
+        help="The base path for the results of the experiment",
+    )
+    parser.add_argument(
+        "--algorithm-name",
+        action="store",
+        default=None,
+        help="The name of the algorithm used in the experiment",
+    )
     # Setup argcomplete
     # setup_argcomplete()
     # Add the completion function for the experiment argument
@@ -235,7 +278,11 @@ def main():
             # Start the navigation stack
             pane = window.panes[0]
             pane.select()
-            pane.send_keys(f"ros2 launch gazebo_test bringup.launch.py map:={map}")
+            pane.send_keys(
+                f"ros2 launch gazebo_test bringup.launch.py map:={map} \
+                params_file:={args.nav_params} \
+                no_controller:={args.no_controller}"
+            )
             print("Started navigation stack")
 
             # Create a new pane for RViz
@@ -257,7 +304,11 @@ def main():
                 # Start the hunav evaluation
                 pane = window.panes[0]
                 pane.select()
-                pane.send_keys(f"ros2 launch hunav_evaluator hunav_evaluator_launch.py")
+                pane.send_keys(
+                    f"ros2 launch hunav_evaluator hunav_evaluator_launch.py \
+                    metrics_file:={args.evaluation_metrics_file}"
+                )
+
                 print("Started hunav evaluation")
 
             session.new_window(attach=True)
@@ -267,9 +318,20 @@ def main():
             # Start the gazebo test
             pane = window.panes[0]
             pane.select()
+
+            base_path_for_results = (
+                f"base_path:={args.base_path_for_results}"
+                if args.base_path_for_results
+                else ""
+            )
+            algorithm_name = (
+                f"algorithm_name:={args.algorithm_name}" if args.algorithm_name else ""
+            )
             pane.send_keys(
                 f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                     use_evaluator:={args.hunav_eval} goals_and_poses_file:={goals_and_poses} \
+                    {base_path_for_results} \
+                    {algorithm_name} \
                     ; tmux wait-for -S process_finished"
             )
             print("Started gazebo test")
