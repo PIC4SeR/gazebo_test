@@ -36,6 +36,19 @@ def print_summary(log_path: Path):
     print("--------------------------------------------------")
 
 
+def isolate_experiment(ros_domain_id: int) -> None:
+    """
+    Isolate the experiment by setting the ROS_DOMAIN_ID.
+    This is useful to avoid conflicts with other ROS nodes.
+    """
+    if ros_domain_id < 0 or ros_domain_id > 1023:
+        raise ValueError("ROS_DOMAIN_ID must be between 0 and 1023.")
+
+    os.environ["ROS_DOMAIN_ID"] = str(ros_domain_id)
+    gazebo_uri = f"http://localhost:{ros_domain_id * 10 + 11345}"
+    return ros_domain_id, gazebo_uri
+
+
 def parse_experiment_name(experiment_name: str):
     """
     Parse the experiment name and return the world, map, and goals_and_poses.
@@ -217,6 +230,13 @@ def main():
         default=None,
         help="The name of the algorithm used in the experiment",
     )
+
+    parser.add_argument(
+        "--ros-domain-id",
+        type=int,
+        default=0,
+        help="The ROS domain ID to isolate the experiment (0-1023)",
+    )
     # Setup argcomplete
     # setup_argcomplete()
     # Add the completion function for the experiment argument
@@ -235,10 +255,12 @@ def main():
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
+    ros_domain_id, gazebo_uri = isolate_experiment(args.ros_domain_id)
     # Create a new tmux server
     server = libtmux.Server()
+
     # Check if the session already exists
-    session_name = "gazebo_test"
+    session_name = "gazebo_test_" + ros_domain_id.__str__()
     try:
         if session_name in server.sessions:
             print(f"Session '{session_name}' already exists. Exiting.")
@@ -247,114 +269,127 @@ def main():
         print("Tmux server not running. Starting a new server.")
 
     # Create a new tmux session
-    with libtmux.Server() as server:
-        with server.new_session(session_name=session_name) as session:
-            print(f"Created new session: {session_name}")
 
-            # Create a window for gazebo simulation
+    with server.new_session(
+        session_name=session_name,
+        environment={
+            "ROS_DOMAIN_ID": str(ros_domain_id),
+            "GAZEBO_MASTER_URI": gazebo_uri,
+        },
+    ) as session:
+        print(f"Created new session: {session_name}")
+        print(
+            f"Set ROS_DOMAIN_ID to {session.getenv('ROS_DOMAIN_ID')} and GAZEBO_MASTER_URI to {session.getenv('GAZEBO_MASTER_URI')}"
+        )
+
+        # Create a window for gazebo simulation
+        window = session.active_window
+        window.rename_window("Gazebo")
+        print("Created new window: Gazebo")
+        # Start the Gazebo simulation
+        pane = window.panes[0]
+        pane.select()
+        gpu_env_var = (
+            "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 "
+            if not args.no_gpu
+            else ""
+        )
+        pane.send_keys(
+            f"{gpu_env_var}ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
+                agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name} \
+                    use_lidar_gpu:={not args.no_gpu}"
+        )
+        print("Started Gazebo simulation")
+
+        session.new_window(attach=True, window_name="Navigation")
+        window = session.active_window
+        window.rename_window("Navigation")
+        print("Created new window: Navigation")
+        # Start the navigation stack
+        pane = window.panes[0]
+        pane.select()
+        pane.send_keys(
+            f"ros2 launch gazebo_test bringup.launch.py map:={map} \
+            params_file:={args.nav_params} \
+            no_controller:={args.no_controller}"
+        )
+        print("Started navigation stack")
+
+        # Create a new pane for RViz
+        if not args.no_rviz:
+            session.new_window(attach=True, window_name="RViz")
             window = session.active_window
-            window.rename_window("Gazebo")
-            print("Created new window: Gazebo")
-            # Start the Gazebo simulation
-            # pane = window.split(attach=True)
+            window.rename_window("RViz")
+            print("Created new window: RViz")
+            # Start RViz
             pane = window.panes[0]
             pane.select()
-            gpu_env_var = (
-                "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 "
-                if not args.no_gpu
-                else ""
-            )
-            pane.send_keys(
-                f"{gpu_env_var}ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
-                    agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name} \
-                        use_lidar_gpu:={not args.no_gpu}"
-            )
-            print("Started Gazebo simulation")
-
-            session.new_window(attach=True, window_name="Navigation")
+            pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
+            print("Started RViz")
+        if args.hunav_eval:
+            session.new_window(attach=True, window_name="Hunav Eval")
             window = session.active_window
-            window.rename_window("Navigation")
-            print("Created new window: Navigation")
-            # Start the navigation stack
+            window.rename_window("Hunav Eval")
+            print("Created new window: Hunav Eval")
+            # Start the hunav evaluation
             pane = window.panes[0]
             pane.select()
             pane.send_keys(
-                f"ros2 launch gazebo_test bringup.launch.py map:={map} \
-                params_file:={args.nav_params} \
-                no_controller:={args.no_controller}"
+                f"ros2 launch hunav_evaluator hunav_evaluator_launch.py \
+                metrics_file:={args.evaluation_metrics_file}"
             )
-            print("Started navigation stack")
 
-            # Create a new pane for RViz
-            if not args.no_rviz:
-                session.new_window(attach=True, window_name="RViz")
-                window = session.active_window
-                window.rename_window("RViz")
-                print("Created new window: RViz")
-                # Start RViz
-                pane = window.panes[0]
-                pane.select()
-                pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
-                print("Started RViz")
-            if args.hunav_eval:
-                session.new_window(attach=True, window_name="Hunav Eval")
-                window = session.active_window
-                window.rename_window("Hunav Eval")
-                print("Created new window: Hunav Eval")
-                # Start the hunav evaluation
-                pane = window.panes[0]
-                pane.select()
-                pane.send_keys(
-                    f"ros2 launch hunav_evaluator hunav_evaluator_launch.py \
-                    metrics_file:={args.evaluation_metrics_file}"
-                )
+            print("Started hunav evaluation")
 
-                print("Started hunav evaluation")
+        session.new_window(attach=True)
+        window = session.active_window
+        window.rename_window("gazebo test")
+        print("Created new window: gazebo test")
+        # Start the gazebo test
+        pane = window.panes[0]
+        pane.select()
 
-            session.new_window(attach=True)
-            window = session.active_window
-            window.rename_window("gazebo test")
-            print("Created new window: gazebo test")
-            # Start the gazebo test
-            pane = window.panes[0]
-            pane.select()
+        base_path_for_results = (
+            f"base_path:={args.base_path_for_results}"
+            if args.base_path_for_results
+            else ""
+        )
+        algorithm_name = (
+            f"algorithm_name:={args.algorithm_name}" if args.algorithm_name else ""
+        )
+        pane.send_keys(
+            f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
+                use_evaluator:={args.hunav_eval} goals_and_poses_file:={goals_and_poses} \
+                {base_path_for_results} \
+                {algorithm_name} \
+                ; tmux wait-for -S process_finished_{ros_domain_id}"
+        )
+        print("Started gazebo test")
 
-            base_path_for_results = (
-                f"base_path:={args.base_path_for_results}"
-                if args.base_path_for_results
-                else ""
-            )
-            algorithm_name = (
-                f"algorithm_name:={args.algorithm_name}" if args.algorithm_name else ""
-            )
-            pane.send_keys(
-                f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
-                    use_evaluator:={args.hunav_eval} goals_and_poses_file:={goals_and_poses} \
-                    {base_path_for_results} \
-                    {algorithm_name} \
-                    ; tmux wait-for -S process_finished"
-            )
-            print("Started gazebo test")
+        # run until the user presses Ctrl+C or until the gazebo test is finished
 
-            # run until the user presses Ctrl+C or until the gazebo test is finished
+        try:
 
-            try:
-                server.cmd("wait-for", "process_finished")
-                print("Gazebo test finished")
-                # retrieve the log of the gazebo test
-                current_panel = "".join(pane.capture_pane())
-                # get the path of the log file
-                log_path = current_panel.split("saved to ")[-1].split("[")[0]
-                # remove leading and trailing spaces
-                log_path = log_path.strip()
-                print_summary(log_path)
-                # wait until the keyboard interrupt
-                if args.wait_after_finish:
-                    print("Press Ctrl+C to exit...")
-                    while True:
-                        time.sleep(1)
-            except KeyboardInterrupt:
-                print("Exiting...")
+            server.cmd("wait-for", f"process_finished_{ros_domain_id}")
+
+            print("Gazebo test finished")
+            # retrieve the log of the gazebo test
+            current_panel = "".join(pane.capture_pane())
+            # get the path of the log file
+            log_path = current_panel.split("saved to ")[-1].split("[")[0]
+            # remove leading and trailing spaces
+            log_path = log_path.strip()
+            print_summary(log_path)
+            # wait until the keyboard interrupt
+            if args.wait_after_finish:
+                print("Press Ctrl+C to exit...")
+                while True:
+                    time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # Cleanup: kill the session
+            print("Exiting...")
 
 
 if __name__ == "__main__":

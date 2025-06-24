@@ -85,6 +85,7 @@ def run_experiment(param_dict):
             "social_nav",  # TODO: change this to a parameter
             "--hunav-eval",
             "--headless",
+            "--no-rviz",
             "--base-path-for-results",
             "/workspaces/hunavsim_ws/optuna_studies/gazebo_test",
             "--algorithm-name",
