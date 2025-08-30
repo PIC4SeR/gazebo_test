@@ -4,12 +4,13 @@ import argparse
 import libtmux
 import os
 import time
-import shtab
 import argcomplete
 from pathlib import Path
 import pandas as pd
 import yaml
 from ament_index_python.packages import get_package_share_directory
+from ament_index_python import get_resources, get_resource
+from typing import Optional, List, Dict, Tuple
 
 
 def print_summary(log_path: Path):
@@ -53,52 +54,48 @@ def parse_experiment_name(experiment_name: str):
     """
     Parse the experiment name and return the world, map, and goals_and_poses.
     """
-    # Define the path to the experiments directory
-    experiment_file = os.path.join(
-        get_package_share_directory("gazebo_test"),
-        "experiments",
-        "experiments.yaml",
-    )
-    # Check if the file exists
-    if not os.path.exists(experiment_file):
-        raise FileNotFoundError(f"File {experiment_file} does not exist.")
+    experiment = get_experiment_by_id(experiment_name)
 
-    # Load the YAML file
-    with open(experiment_file, "r") as file:
-        experiments = yaml.safe_load(file)
-    # Check if the experiment name exists in the file
-    if experiment_name not in experiments:
-        raise ValueError(f"Experiment {experiment_name} does not exist in the file.")
+    if experiment is None:
+        raise ValueError(f"Experiment {experiment_name} does not exist.")
 
-    # Get the world, map, and goals_and_poses from the file
-    world = experiments[experiment_name]["world"]
-    map = experiments[experiment_name]["map"]
-    goals_and_poses = experiments[experiment_name]["goals_and_poses"]
-    world_pkg_name = experiments[experiment_name]["world_pkg_name"]
+    # retrieve the package name for the experiment
+    experiment_pkg_name = experiment["pkg_name"]
+
+    world = experiment["world"]
+    map = experiment["map"]
+    goals_and_poses = experiment["goals_and_poses"]
+    world_pkg_name = experiment["world_pkg_name"]
+
     world_pkg_path = os.path.join(
         get_package_share_directory(world_pkg_name),
         "worlds",
         world,
     )
-    agents_configuration_file = experiments[experiment_name][
-        "agents_configuration_file"
-    ]
-    agents_pkg_name = experiments[experiment_name]["config_pkg_name"]
+    agents_configuration_file = experiment["agents_configuration_file"]
+    agents_pkg_name = experiment["config_pkg_name"]
     agents_pkg_path = os.path.join(
         get_package_share_directory(agents_pkg_name),
         "config",
         agents_configuration_file,
     )
 
+    # check if there is a map_pkg name in the file
+    # else:
+    #     map_pkg_name = experiment_pkg_name
+    map_pkg_name = experiment_pkg_name
+    if "map_pkg_name" in experiment:
+        map_pkg_name = experiment["map_pkg_name"]
+
     # check if the world, map, and goals_and_poses are absolute paths
     if not os.path.isabs(map):
         map = os.path.join(
-            get_package_share_directory("gazebo_test"),
+            get_package_share_directory(map_pkg_name),
             map,
         )
     if not os.path.isabs(goals_and_poses):
         goals_and_poses = os.path.join(
-            get_package_share_directory("gazebo_test"),
+            get_package_share_directory(experiment_pkg_name),
             goals_and_poses,
         )
     # Check if the world, map, and goals_and_poses exist
@@ -124,73 +121,163 @@ def parse_experiment_name(experiment_name: str):
     )
 
 
-def setup_argcomplete():
+def get_experiment_files() -> dict[str, str]:
     """
-    Setup argcomplete for the script.
-    """
-    # Get the path to the experiments directory
-    experiments_dir = os.path.join(
-        get_package_share_directory("gazebo_test"),
-        "experiments",
-    )
-    # Check if the directory exists
-    if not os.path.exists(experiments_dir):
-        raise FileNotFoundError(f"Directory {experiments_dir} does not exist.")
+    Get the files associated with the experiment using the ament index
 
-    # Get the list of files in the directory
-    files = os.listdir(experiments_dir)
+    """
+    resources = {}
+    for package_name in get_resources("gazebo_test_experiments"):
+        try:
+            resource = get_resource("gazebo_test_experiments", package_name)
+            package_path = get_package_share_directory(package_name)
+            for resources_items in resource[0].split("\n"):
+                if not resources_items:
+                    continue
+                resource_name, resource_path = resources_items.split(";")
+                i = 1
+                while resource_name in resources.keys():
+                    resource_name = f"{resource_name}_{i}"
+                    i += 1
+
+                resources[resource_name] = os.path.join(package_path, resource_path)
+        except Exception as e:
+            print(f"Error getting resource for package {package_name}: {e}")
+            continue
+
+    return resources
+
+
+def get_experiment_ids() -> List[str]:
+    """
+    Get the IDs of the experiments.
+
+    returns: A list of experiment IDs.
+    """
+    files = get_experiment_files().values()
+
+    # Check if the files are valid
+    if not files:
+        raise ValueError("No valid experiment files found.")
+
     # Filter the files to only include YAML files
     yaml_files = [f for f in files if f.endswith(".yaml")]
-    # Get the names of the experiments from the YAML files
-    experiment_names = [f.split(".")[0] for f in yaml_files]
 
-    # Register the completion function
-    shtab.register_completion(
-        "experiment",
-        choices=experiment_names,
-        help="The name of the experiment to run",
-    )
+    # Check if the files exists
+    for f in yaml_files:
+        if not os.path.exists(f):
+            raise FileNotFoundError(f"File {f} does not exist.")
+
+    # Get the names of the experiments from the YAML files
+    # open the yaml files and extract the experiment names
+    experiment_names = []
+    for f in yaml_files:
+        with open(f, "r") as file:
+            try:
+                data = yaml.safe_load(file)
+                experiments = data.get("experiments", None)
+                if experiments:
+                    experiment_names.extend(experiments)
+            except Exception as e:
+                print(f"Error reading {f}: {e}")
+
+    return experiment_names
+
+
+def get_experiment_by_id(experiment_id: str) -> Optional[dict]:
+    """
+    Get the experiment details by ID.
+
+    returns: A dictionary containing the experiment details.
+    """
+    files = get_experiment_files().values()
+
+    # Check if the files are valid
+    if not files:
+        raise ValueError("No valid experiment files found.")
+
+    # Filter the files to only include YAML files
+    yaml_files = [f for f in files if f.endswith(".yaml")]
+
+    # Check if the files exists
+    for f in yaml_files:
+        if not os.path.exists(f):
+            raise FileNotFoundError(f"File {f} does not exist.")
+
+    # Search inside the files if there is the corrispondent key in the YAML
+    for f in yaml_files:
+        with open(f, "r") as file:
+            try:
+                data = yaml.safe_load(file)
+                if experiment_id in data:
+                    this_pkg_name = f.split("share/")[-1].split("/")[0]
+                    data[experiment_id]["pkg_name"] = this_pkg_name
+                    return data[experiment_id]
+            except Exception as e:
+                print(f"Error reading {f}: {e}")
+
+    return None
+
+
+def _print_experiments():
+    """
+    Print the list of experiments.
+    """
+    experiment_names = get_experiment_ids()
+    print("Available experiments:")
+    for name in experiment_names:
+        print(f" - {name}")
 
 
 def main():
+
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description="Script to control bag recording and headless mode."
+    main_parser = argparse.ArgumentParser(
+        description="""Run a full experiment in Gazebo with navigation and evaluation.
+        Use the run subcommand to start the experiment.
+        """
     )
-    parser.add_argument(
+
+    sub_parser = main_parser.add_subparsers(dest="cmd", required=True)
+
+    run_parser = sub_parser.add_parser(
+        "run", help="Run a full experiment in Gazebo with navigation and evaluation."
+    )
+    run_parser.add_argument(
         "--bag-record", action="store_true", help="Enable bag recording"
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--hunav-eval",
         action="store_true",
         help="Enable hunav evaluation mode (use hunav_eval.launch.py)",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--headless", action="store_true", help="Run Gazebo in headless mode"
     )
 
-    parser.add_argument("--no-rviz", action="store_true", help="Do not start RViz")
+    run_parser.add_argument("--no-rviz", action="store_true", help="Do not start RViz")
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--wait-after-finish",
         action="store_true",
         help="Wait for the user to press Ctrl+C after the test is finished",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--no-gpu",
         action="store_true",
         help="Do not use GPU for rendering (use CPU instead)",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "experiment",
         action="store",
         default="social_nav",
-        help="The name of the experiment to run",
+        help="The Experiment to run (chosen by the list of available experiments)\
+            Hint: Use 'list' command to see all available experiments.",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--nav-params",
         action="store",
         default=os.path.join(
@@ -201,7 +288,7 @@ def main():
         help="The path to the navigation parameters file",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--evaluation-metrics-file",
         action="store",
         default=os.path.join(
@@ -212,36 +299,43 @@ def main():
         help="The path to the evaluation metrics file",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--no-controller",
         action="store_true",
         help="Do not start the navigation controller",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--base-path-for-results",
         action="store",
         default=None,
         help="The base path for the results of the experiment",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--algorithm-name",
         action="store",
         default=None,
         help="The name of the algorithm used in the experiment",
     )
 
-    parser.add_argument(
+    run_parser.add_argument(
         "--ros-domain-id",
         type=int,
         default=0,
         help="The ROS domain ID to isolate the experiment (0-1023)",
     )
-    # Setup argcomplete
-    # setup_argcomplete()
-    # Add the completion function for the experiment argument
 
-    # world, map, goals_and_poses = parse_experiment_name(parser.parse_args().experiment)
+    run_parser.set_defaults(func=run)
+    ls_parser = sub_parser.add_parser("list", help="List all available experiments.")
+    ls_parser.set_defaults(func=lambda args: _print_experiments())
+    argcomplete.autocomplete(main_parser, always_complete_options=False)
+
+    args = main_parser.parse_args()
+    args.func(args)
+
+
+def run(args: argparse.Namespace):
+    """Run the specified experiment."""
     (
         world,
         map,
@@ -249,11 +343,7 @@ def main():
         agents_configuration_file,
         world_pkg_name,
         agents_pkg_name,
-    ) = parse_experiment_name(parser.parse_args().experiment)
-
-    # Hook argcomplete
-    argcomplete.autocomplete(parser)
-    args = parser.parse_args()
+    ) = parse_experiment_name(args.experiment)
 
     ros_domain_id, gazebo_uri = isolate_experiment(args.ros_domain_id)
     # Create a new tmux server

@@ -14,7 +14,7 @@ from std_srvs.srv import Empty
 from geometry_msgs.msg import Pose
 from typing import Optional, List, Dict, Callable
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
-from rclpy.logging import get_logger
+from rclpy.logging import get_logger, LoggingSeverity
 
 
 class GazeboEnvironmentHandler:
@@ -60,6 +60,7 @@ class GazeboEnvironmentHandler:
             callback_group=MutuallyExclusiveCallbackGroup(),
         )
         self.logger = get_logger("gazebo_env_handler")
+        # self.logger.set_level(LoggingSeverity.DEBUG)
         self.logger.info("GazeboEnvironmentHandler initialized")
 
     async def wait_for_gazebo_ready(self):

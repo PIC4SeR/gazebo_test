@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(gazebo_test)
+project(gazebo_experiments)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -7,16 +7,8 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
-find_package(rclpy REQUIRED)
-find_package(hunav_sim QUIET)
-find_package(std_srvs REQUIRED)
-
-#display a warning if hunav_sim is not found
-
-if(NOT hunav_sim_FOUND)
-  message(WARNING "hunav_sim not found. this is fine for testing worlds and experiments, but without human simulation")
-endif()
+find_package(gazebo_sim REQUIRED)
+find_package(gazebo_test REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -31,23 +23,12 @@ if(BUILD_TESTING)
 endif()
 
 install(DIRECTORY
-  launch
   config
-  behavior_trees
-  rviz
-  cmake
+  maps
+  goals_and_poses
   DESTINATION share/${PROJECT_NAME}/
 )
 
+experiment_register_configs(${PROJECT_NAME} EXPERIMENT_FILE "experiments/experiments.yaml")
 
-# Install Python modules
-ament_python_install_package(${PROJECT_NAME})
-
-# Install Python scripts
-install(PROGRAMS
-  scripts/experiment_manager
-  scripts/full_experiment
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-ament_package(CONFIG_EXTRAS gazebo_test-extras.cmake.in)
+ament_package()
