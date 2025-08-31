@@ -33,6 +33,7 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     goals_and_poses_file: DeclareLaunchArgument = (
         ExperimentManagerArgs.goals_and_poses_file
     )
+    exp_config_pkg: DeclareLaunchArgument = ExperimentManagerArgs.exp_config_pkg
 
 
 def launch_setup(context, *args, **kwargs):
@@ -40,7 +41,13 @@ def launch_setup(context, *args, **kwargs):
     parameters = ParameterFile(
         RewrittenYaml(
             source_file=PathJoinSubstitution(
-                [FindPackageShare("gazebo_test"), "config", "experiment_config.yaml"]
+                [
+                    FindPackageShare(
+                        LaunchConfiguration("exp_config_pkg").perform(context)
+                    ),
+                    "config",
+                    "experiment_config.yaml",
+                ]
             ),
             param_rewrites=LaunchArguments().param_rewrites_dict(context),
             convert_types=True,

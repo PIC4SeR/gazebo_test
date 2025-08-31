@@ -325,6 +325,13 @@ def main():
         help="The ROS domain ID to isolate the experiment (0-1023)",
     )
 
+    run_parser.add_argument(
+        "--exp-config-pkg",
+        action="store",
+        default=None,
+        help="The package containing the experiment configuration files",
+    )
+
     run_parser.set_defaults(func=run)
     ls_parser = sub_parser.add_parser("list", help="List all available experiments.")
     ls_parser.set_defaults(func=lambda args: _print_experiments())
@@ -447,11 +454,15 @@ def run(args: argparse.Namespace):
         algorithm_name = (
             f"algorithm_name:={args.algorithm_name}" if args.algorithm_name else ""
         )
+        exp_config_pkg = (
+            f"exp_config_pkg:={args.exp_config_pkg}" if args.exp_config_pkg else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} goals_and_poses_file:={goals_and_poses} \
                 {base_path_for_results} \
                 {algorithm_name} \
+                {exp_config_pkg} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
         print("Started gazebo test")

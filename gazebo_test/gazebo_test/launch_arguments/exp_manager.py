@@ -45,3 +45,8 @@ class ExperimentManagerArgs:
         default_value="",
         description="Path to the YAML file containing goals and poses",
     )
+    exp_config_pkg: DeclareLaunchArgument = DeclareLaunchArgument(
+        "exp_config_pkg",
+        default_value="gazebo_test",
+        description="Package containing the experiment manager configuration files",
+    )
