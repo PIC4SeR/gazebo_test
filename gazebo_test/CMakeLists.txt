@@ -32,7 +32,6 @@ endif()
 
 install(DIRECTORY
   launch
-  config
   behavior_trees
   rviz
   cmake
