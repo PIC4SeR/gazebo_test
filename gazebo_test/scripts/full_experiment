@@ -65,6 +65,13 @@ def main():
         action="store_true",
         help="Enable hunav evaluation mode (use hunav_eval.launch.py)",
     )
+
+    run_parser.add_argument(
+        "--record-maps",
+        action="store_true",
+        help="Record map topics in the bag files (map, global and local costmap)",
+    )
+
     run_parser.add_argument(
         "--headless", action="store_true", help="Run Gazebo in headless mode"
     )
@@ -89,6 +96,13 @@ def main():
         default="social_nav",
         help="The Experiment to run (chosen by the list of available experiments)\
             Hint: Use 'list' command to see all available experiments.",
+    )
+
+    run_parser.add_argument(
+        "--wait-before-start",
+        type=int,
+        default=None,
+        help="Number of seconds to wait before starting the experiment (to let the environment settle)",
     )
 
     run_parser.add_argument(
@@ -298,12 +312,19 @@ def run(args: argparse.Namespace):
         exp_config_pkg = (
             f"exp_config_pkg:={args.exp_config_pkg}" if args.exp_config_pkg else ""
         )
+        wait_before_start = (
+            f"wait_before_start:={args.wait_before_start}"
+            if args.wait_before_start
+            else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
-                use_evaluator:={args.hunav_eval} goals_and_poses_file:={goals_and_poses} \
+                use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
+                goals_and_poses_file:={goals_and_poses} \
                 {base_path_for_results} \
                 {algorithm_name} \
                 {exp_config_pkg} \
+                {wait_before_start} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
         print("Started gazebo test")

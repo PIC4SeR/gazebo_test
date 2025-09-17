@@ -29,10 +29,12 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     timeout_duration: DeclareLaunchArgument = ExperimentManagerArgs.timeout_duration
     use_recorder: DeclareLaunchArgument = ExperimentManagerArgs.use_recorder
     use_evaluator: DeclareLaunchArgument = ExperimentManagerArgs.use_evaluator
+    record_maps: DeclareLaunchArgument = ExperimentManagerArgs.record_maps
     repetitions: DeclareLaunchArgument = ExperimentManagerArgs.repetitions
     goals_and_poses_file: DeclareLaunchArgument = (
         ExperimentManagerArgs.goals_and_poses_file
     )
+    wait_before_start: DeclareLaunchArgument = ExperimentManagerArgs.wait_before_start
     exp_config_pkg: DeclareLaunchArgument = ExperimentManagerArgs.exp_config_pkg
 
 

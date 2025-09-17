@@ -9,6 +9,7 @@ from nav_msgs.msg import Odometry, Path as NavPath
 from sensor_msgs.msg import LaserScan
 from hunav_msgs.msg import Agents
 from tf2_msgs.msg import TFMessage
+from nav_msgs.msg import OccupancyGrid
 
 import os
 from pathlib import Path
@@ -32,9 +33,21 @@ topic_dict = {
     "/tf_static": TFMessage,
 }
 
+maps_topic_dict = {
+    "/map": OccupancyGrid,
+    "/global_costmap/costmap": OccupancyGrid,
+    "/local_costmap/costmap": OccupancyGrid,
+}
+
 
 class BagRecorder:
-    def __init__(self, node: Node, algorithm: str = "test", base_path: str = ""):
+    def __init__(
+        self,
+        node: Node,
+        algorithm: str = "test",
+        base_path: str = "",
+        record_maps: bool = False,
+    ):
         """
         Initialize the BagRecorder class.
         Args:
@@ -53,6 +66,9 @@ class BagRecorder:
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
+        # extend the topic_dict with the maps_topic_dict
+        if record_maps:
+            topic_dict.update(maps_topic_dict)
         for topic_name, msg_type in topic_dict.items():
             # Create a TopicMetadata object for each topic
             self.topics_metadata.append(

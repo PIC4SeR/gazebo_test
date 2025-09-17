@@ -6,7 +6,7 @@ import os
 
 @dataclass(frozen=True, kw_only=True)
 class NavigationArgs:
-    bringup_dir = get_package_share_directory("gazebo_test")
+    bringup_dir = get_package_share_directory("gazebo_experiments")
     """This class contains a collection of frequently used LaunchArguments for the navigation launch file."""
 
     namespace: DeclareLaunchArgument = DeclareLaunchArgument(

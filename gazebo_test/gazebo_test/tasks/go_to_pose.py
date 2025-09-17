@@ -57,6 +57,12 @@ class ExperimentManager(Node):
         self.repetitions = self.declare_parameter(
             "repetitions", Parameter.Type.INTEGER
         ).value
+        self.record_maps = self.declare_parameter(
+            "record_maps", Parameter.Type.BOOL
+        ).value
+        self.wait_before_start = self.declare_parameter(
+            "wait_before_start", Parameter.Type.INTEGER
+        ).value
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
@@ -65,7 +71,10 @@ class ExperimentManager(Node):
         )
         if self.use_recorder:
             self.bag_recorder = BagRecorder(
-                self, algorithm=self.algorithm_name, base_path=self.base_path
+                self,
+                algorithm=self.algorithm_name,
+                base_path=self.base_path,
+                record_maps=self.record_maps,
             )
         if self.use_evaluator:
             self.hunav_evaluator_handler = HunavEvaluatortHandler(
@@ -195,6 +204,15 @@ class ExperimentManager(Node):
             goal_xml=self.goal_box_xml,
         )
         await self.navigator.reset_navigation()
+        # wait for a few seconds before starting the experiment (to let the environment settle)
+        if self.wait_before_start:
+            self.get_logger().debug(
+                f"Waiting for {self.wait_before_start} seconds before starting the experiment ..."
+            )
+            # create a rate object to wait
+            rclpy_rate = self.create_rate(1 / self.wait_before_start)
+            rclpy_rate.sleep()
+            self.get_logger().debug("Wait completed")
         # start navigation
         # create task to wait for the robot to reach the goal
         self.navigator.start_navigation_task(

@@ -35,6 +35,19 @@ class ExperimentManagerArgs:
         default_value="false",
         description="Specify whether to use the hunav evaluator",
     )
+    record_maps: DeclareLaunchArgument = DeclareLaunchArgument(
+        "record_maps",
+        choices=["true", "false", "True", "False"],
+        default_value="false",
+        description="Specify whether to record map topics in the bag files",
+    )
+
+    wait_before_start: DeclareLaunchArgument = DeclareLaunchArgument(
+        "wait_before_start",
+        default_value="0",
+        description="Number of seconds to wait before starting the experiment (to let the environment settle)",
+    )
+
     repetitions: DeclareLaunchArgument = DeclareLaunchArgument(
         "repetitions",
         default_value="",
@@ -47,6 +60,6 @@ class ExperimentManagerArgs:
     )
     exp_config_pkg: DeclareLaunchArgument = DeclareLaunchArgument(
         "exp_config_pkg",
-        default_value="gazebo_test",
+        default_value="gazebo_experiments",
         description="Package containing the experiment manager configuration files",
     )

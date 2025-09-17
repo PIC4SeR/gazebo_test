@@ -5,9 +5,11 @@ experiment_manager:
     use_sim_time: #THIS IS SET IN THE LAUNCH FILE (default: True) Since the simulation is running in Gazebo, we need to set this to True
     use_recorder: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will record the bag files)
     use_evaluator: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use the hunav evaluator to compute the metrics)
+    record_maps: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the bag recorder will record the map topics)
+    wait_before_start: #THIS IS SET IN THE LAUNCH FILE (default: None) (Number of seconds to wait before starting the experiment to let the environment settle)
     algorithm_name: "test_algorithm"
     base_path: "/workspaces/hunavsim_ws/bags/gazebo_test"
     timeout_duration: 60.0
     repetitions: 1
-    goals_and_poses_file: "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_test/goals_and_poses/social_nav.yaml"
+    goals_and_poses_file: "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_experiments/goals_and_poses/social_nav.yaml"
     no_controller:  #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use nav2 planner to plan the path and the controller will not be used)
