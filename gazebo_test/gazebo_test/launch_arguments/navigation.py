@@ -18,7 +18,7 @@ class NavigationArgs:
     use_namespace: DeclareLaunchArgument = DeclareLaunchArgument(
         "use_namespace",
         default_value="false",
-        choices=["true", "false"],
+        choices=["true", "false", "True", "False"],
         description="Whether to apply a namespace to the navigation stack",
     )
 

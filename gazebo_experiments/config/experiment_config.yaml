@@ -5,6 +5,7 @@ experiment_manager:
     use_sim_time: #THIS IS SET IN THE LAUNCH FILE (default: True) Since the simulation is running in Gazebo, we need to set this to True
     use_recorder: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will record the bag files)
     use_evaluator: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use the hunav evaluator to compute the metrics)
+    use_namespace: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will use the hunav evaluator to compute the metrics)
     record_maps: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the bag recorder will record the map topics)
     wait_before_start: #THIS IS SET IN THE LAUNCH FILE (default: None) (Number of seconds to wait before starting the experiment to let the environment settle)
     algorithm_name: "test_algorithm"

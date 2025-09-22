@@ -109,7 +109,7 @@ def main():
         "--nav-params",
         action="store",
         default=os.path.join(
-            get_package_share_directory("gazebo_test"),
+            get_package_share_directory("gazebo_experiments"),
             "config",
             "nav2_params.yaml",
         ),
