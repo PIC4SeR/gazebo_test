@@ -128,12 +128,6 @@ def main():
     )
 
     run_parser.add_argument(
-        "--no-controller",
-        action="store_true",
-        help="Do not start the navigation controller",
-    )
-
-    run_parser.add_argument(
         "--base-path-for-results",
         action="store",
         default=None,
@@ -250,8 +244,7 @@ def run(args: argparse.Namespace):
         pane.select()
         pane.send_keys(
             f"ros2 launch gazebo_test bringup.launch.py map:={map} \
-            params_file:={args.nav_params} \
-            no_controller:={args.no_controller}"
+            params_file:={args.nav_params}"
         )
         print("Started navigation stack")
 

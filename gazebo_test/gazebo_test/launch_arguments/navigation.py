@@ -65,10 +65,3 @@ class NavigationArgs:
         choices=["debug", "info", "warn", "error", "fatal"],
         description="Log level for the nodes",
     )
-
-    no_controller: DeclareLaunchArgument = DeclareLaunchArgument(
-        "no_controller",
-        default_value="false",
-        choices=["true", "false", "True", "False"],
-        description="Whether to launch the controller or not (only planning nodes will be launched if true)",
-    )

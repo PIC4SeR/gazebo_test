@@ -43,13 +43,11 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     container_name: DeclareLaunchArgument = NavigationArgs.container_name
     use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
     log_level: DeclareLaunchArgument = NavigationArgs.log_level
-    no_controller: DeclareLaunchArgument = NavigationArgs.no_controller
 
 
 def lifecycle_nodes(context, *args, **kwargs):
     """Return the list of lifecycle nodes to be launched."""
 
-    no_controller = LaunchConfiguration("no_controller")
     use_composition = LaunchConfiguration("use_composition")
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
@@ -112,7 +110,6 @@ def generate_launch_description():
     container_name_full = (namespace, "/", container_name)
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
-    no_controller = LaunchConfiguration("no_controller")
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -154,7 +151,6 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=["--ros-args", "--log-level", log_level],
-                condition=UnlessCondition(no_controller),
                 remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
             ),
             Node(
@@ -234,14 +230,13 @@ def generate_launch_description():
                 condition=IfCondition(use_composition),
                 target_container=container_name_full,
                 composable_node_descriptions=[
-                    # ComposableNode(
-                    #     package="nav2_controller",
-                    #     plugin="nav2_controller::ControllerServer",
-                    #     name="controller_server",
-                    #     parameters=[configured_params],
-                    #     condition=UnlessCondition(no_controller),
-                    #     remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
-                    # ),
+                    ComposableNode(
+                        package="nav2_controller",
+                        plugin="nav2_controller::ControllerServer",
+                        name="controller_server",
+                        parameters=[configured_params],
+                        remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
+                    ),
                     ComposableNode(
                         package="nav2_smoother",
                         plugin="nav2_smoother::SmootherServer",
@@ -284,19 +279,6 @@ def generate_launch_description():
                         name="map_server",
                         parameters=[configured_params],
                         remappings=remappings,
-                    ),
-                ],
-            ),
-            LoadComposableNodes(
-                condition=UnlessCondition(no_controller),
-                target_container=container_name_full,
-                composable_node_descriptions=[
-                    ComposableNode(
-                        package="nav2_controller",
-                        plugin="nav2_controller::ControllerServer",
-                        name="controller_server",
-                        parameters=[configured_params],
-                        remappings=remappings + [("cmd_vel", "cmd_vel_nav")],
                     ),
                 ],
             ),

@@ -50,7 +50,6 @@ class LaunchArguments(LaunchArgumentsBase):
     use_composition: DeclareLaunchArgument = NavigationArgs.use_composition
     use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
     log_level: DeclareLaunchArgument = NavigationArgs.log_level
-    no_controller: DeclareLaunchArgument = NavigationArgs.no_controller
 
 
 def generate_launch_description():
@@ -66,7 +65,6 @@ def generate_launch_description():
     use_composition = LaunchConfiguration("use_composition")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
-    no_controller = LaunchConfiguration("no_controller")
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -129,7 +127,6 @@ def generate_launch_description():
                     "use_composition": use_composition,
                     "use_respawn": use_respawn,
                     "container_name": "nav2_container",
-                    "no_controller": no_controller,
                 },
                 namespace=namespace,
             ),
