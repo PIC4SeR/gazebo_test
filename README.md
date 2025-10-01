@@ -41,24 +41,29 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
    ```bash
     source ~/ros2_ws/install/setup.bash
     ```
+
 5. install the required python packages
 
    ```bash
    pip install --user -r src/gazebo_test/requirements.txt
    ```
+
 6. Install tmux if not already installed
 
    ```bash
    sudo apt install tmux
    ```
+
 7. Resolve the issue with tf_transformations
 
    change the lines in /usr/lib/python3/dist-packages/transforms3d/quaternions.py
    search for _MAX_FLOAT and _FLOAT_EPS and change them to:
+
    ```python
    _MAX_FLOAT = np.maximum_sctype(np.float32)
    _FLOAT_EPS = np.finfo(np.float32).eps
    ```
+
    This resolves the issue with tf_transformations in ROS2 Humble. (save the file as root to be able to edit it)
 
 8. Add the following line to your ~/.tmux.conf file to enable mouse support in tmux:
@@ -70,9 +75,11 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
    This allows you to scroll and select panes using the mouse.
 
 9. Change the base_path in gazebo_test/gazebo_experiments/experiment_config.yaml to your workspace path
+
    ```yaml
    base_path: "<your_workspace_path>/results"
    ```
+
 10. Verify that you have the correct nav2_params files in gazebo_test/gazebo_experiments/nav2_params
     You can use the ones provided in the repository or create your own.
 
@@ -85,6 +92,6 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
 Check the [usage documentation](docs/usage.md) for detailed instructions on how to use the framework.
 
-## TODO 
+## TODO
+
 - rviz panel for experiment setting
-- config parameters in yaml
