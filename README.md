@@ -73,6 +73,9 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
    ```yaml
    base_path: "<your_workspace_path>/results"
    ```
+10. Verify that you have the correct nav2_params files in gazebo_test/gazebo_experiments/nav2_params
+    You can use the ones provided in the repository or create your own.
+
 ## Packages
 
 - ['gazebo_test'](gazebo_test/README.md): The main package containing the test framework and utilities.
