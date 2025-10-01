@@ -19,7 +19,7 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
    ```bash
    cd ~/ros2_ws/src
-   git clone 
+   git clone https://github.com/PIC4SeR/gazebo_test
    ```
 
 2. Install the required dependencies:
@@ -33,7 +33,7 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
    ```bash
    cd ~/ros2_ws
-   colcon build
+   colcon build --symlink-install
    ```
 
 4. Source the workspace:
@@ -41,7 +41,38 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
    ```bash
     source ~/ros2_ws/install/setup.bash
     ```
+5. install the required python packages
 
+   ```bash
+   pip install --user -r src/gazebo_test/requirements.txt
+   ```
+6. Install tmux if not already installed
+
+   ```bash
+   sudo apt install tmux
+   ```
+7. Resolve the issue with tf_transformations
+
+   change the lines in /usr/lib/python3/dist-packages/transforms3d/quaternions.py
+   search for _MAX_FLOAT and _FLOAT_EPS and change them to:
+   ```python
+   _MAX_FLOAT = np.maximum_sctype(np.float32)
+   _FLOAT_EPS = np.finfo(np.float32).eps
+   ```
+   This resolves the issue with tf_transformations in ROS2 Humble. (save the file as root to be able to edit it)
+
+8. Add the following line to your ~/.tmux.conf file to enable mouse support in tmux:
+
+   ```bash
+   set -g mouse on
+   ```
+
+   This allows you to scroll and select panes using the mouse.
+
+9. Change the base_path in gazebo_test/gazebo_experiments/experiment_config.yaml to your workspace path
+   ```yaml
+   base_path: "<your_workspace_path>/results"
+   ```
 ## Packages
 
 - ['gazebo_test'](gazebo_test/README.md): The main package containing the test framework and utilities.
@@ -52,6 +83,5 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 Check the [usage documentation](docs/usage.md) for detailed instructions on how to use the framework.
 
 ## TODO 
-- Hunav evaluator integration
 - rviz panel for experiment setting
 - config parameters in yaml
