@@ -24,7 +24,7 @@
         min_turning_r: 0.2
       critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", 
         "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic","ObstaclesCritic"
-        {%- if controller.social_plugin is defined and controller.social_plugin %}, "SocialCostCritic"{% endif -%}]
+        {%- if controller.social_plugin is defined and controller.social_plugin %}, "SocialCritic"{% endif -%}]
       ConstraintCritic:
         enabled: true
         cost_power: 1
