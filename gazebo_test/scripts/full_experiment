@@ -19,18 +19,29 @@ from gazebo_test.script_utils.parsing_utils import (
     get_experiment_ids,
 )
 
+from gazebo_test.script_utils.navigator_utils import get_navigator_yaml, list_available_navigators
+
 
 def _print_experiments():
     """
     Print the list of experiments.
     """
     experiment_names = get_experiment_ids()
-    print("Available experiments:")
+    print("Available experiments:\n")
     for name in experiment_names:
-        print(f" - {name}")
+        print(f"      - {name}")
+
+def _print_navigators():
+    """
+    Print the list of navigators.
+    """
+    navigator_names = list_available_navigators()
+    print("Available navigators:\n")
+    for name in navigator_names:
+        print(f"      - {name}")
 
 
-def isolate_experiment(ros_domain_id: int) -> None:
+def isolate_experiment(ros_domain_id: int) -> Tuple[int, str]:
     """
     Isolate the experiment by setting the ROS_DOMAIN_ID.
     This is useful to avoid conflicts with other ROS nodes.
@@ -108,12 +119,16 @@ def main():
     run_parser.add_argument(
         "--nav-params",
         action="store",
-        default=os.path.join(
-            get_package_share_directory("gazebo_experiments"),
-            "config",
-            "nav2_params.yaml",
-        ),
+        default=None,
         help="The path to the navigation parameters file",
+    )
+    
+    run_parser.add_argument(
+        "--navigator",
+        action="store",
+        default=None,
+        help="The navigation controller to use. \
+        Hint: Use 'list' command to see all available controllers."
     )
 
     run_parser.add_argument(
@@ -171,7 +186,9 @@ def main():
 
     run_parser.set_defaults(func=run)
     ls_parser = sub_parser.add_parser("list", help="List all available experiments.")
-    ls_parser.set_defaults(func=lambda args: _print_experiments())
+    ls_parser.set_defaults(func=lambda args: [_print_experiments(), # new line
+                                             print(""), # new line
+                                             _print_navigators()]) # new line
     argcomplete.autocomplete(main_parser, always_complete_options=False)
 
     args = main_parser.parse_args()
@@ -242,9 +259,35 @@ def run(args: argparse.Namespace):
         # Start the navigation stack
         pane = window.panes[0]
         pane.select()
+        navigator_path = None
+        if args.nav_params:
+            if args.navigator is not None:
+                Warning(
+                    "Both navigation parameters file and navigator specified. Using the navigator to generate the parameters file."
+                )
+                navigator_path = args.navigator
+            else:
+                print(
+                    f"Using navigation parameters file: {args.nav_params} (ignoring navigator)"
+                )
+                navigator_path = args.nav_params
+        elif args.navigator:
+            print(f"Using navigator: {args.navigator} to generate the parameters file")
+            navigator_path = get_navigator_yaml(args.navigator)
+            print(f"Generated navigation parameters file at: {navigator_path}")
+        else:
+            print(
+                "No navigation parameters file or navigator specified. Using default nav2_params.yaml"
+            )
+            navigator_path = os.path.join(
+                get_package_share_directory("gazebo_experiments"),
+                "config",
+                "nav2_params.yaml",
+            )
+            print(f"Using default navigation parameters file: {navigator_path}")
         pane.send_keys(
             f"ros2 launch gazebo_test bringup.launch.py map:={map} \
-            params_file:={args.nav_params}"
+            params_file:={navigator_path}"
         )
         print("Started navigation stack")
 
@@ -299,9 +342,13 @@ def run(args: argparse.Namespace):
             if args.base_path_for_results
             else ""
         )
-        algorithm_name = (
-            f"algorithm_name:={args.algorithm_name}" if args.algorithm_name else ""
-        )
+        algorithm_name = ""
+        if not args.algorithm_name:
+            if args.navigator:
+                algorithm_name = f"algorithm_name:={args.navigator}"
+        else:
+            algorithm_name = f"algorithm_name:={args.algorithm_name}"
+
         exp_config_pkg = (
             f"exp_config_pkg:={args.exp_config_pkg}" if args.exp_config_pkg else ""
         )
@@ -335,7 +382,7 @@ def run(args: argparse.Namespace):
             log_path = current_panel.split("saved to ")[-1].split("[")[0]
             # remove leading and trailing spaces
             log_path = log_path.strip()
-            print_summary(log_path)
+            print_summary(Path(log_path))
             # wait until the keyboard interrupt
             if args.wait_after_finish:
                 print("Press Ctrl+C to exit...")
