@@ -1,10 +1,12 @@
 {% block controller_config -%}
-      {% if controller.enlarged_state -%}
+      {% if controller.enlarged_state is defined and controller.enlarged_state -%}
           plugin: "mpc_enlarged_state::MPCEnlargedState"
-      {% elif controller.social_motion -%}
+      {% elif controller.social_motion is defined and controller.social_motion -%}
           plugin: "mpc_sfm_motion_model::MPCSFMMotionModel"
+      {% elif controller.base is defined and controller.base -%}
+          plugin: "mpc_base::MPCBase"
       {% else -%}
-          {{ raise("MPC controller requires either 'enlarged_state' or 'social_motion' feature to be true.") }}
+          {{ raise("MPC controller requires either 'enlarged_state', 'social_motion' or 'base' feature to be true.") }}
       {% endif %}
       trajectorizer:
         omnidirectional: false

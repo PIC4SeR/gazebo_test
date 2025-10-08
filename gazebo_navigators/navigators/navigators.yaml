@@ -14,8 +14,9 @@ navigators:
   - social_MPPI
   - ORCA
   - PURE_SFM
-  - MPC_enlarged_state
+  - MPC_base
   - MPC_social_motion
+  - MPC_enlarged_state
 
 # Configuration for each experiment controller
 # Each controller specifies a base algorithm and optional features.
@@ -124,6 +125,16 @@ PURE_SFM:
     name: only_controller
     controller:
       name: pure_sfm
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
