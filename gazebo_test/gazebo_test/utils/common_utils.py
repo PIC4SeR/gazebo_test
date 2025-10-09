@@ -7,7 +7,7 @@ from tf_transformations import quaternion_from_euler
 import yaml
 
 
-def parse_entity_state_yaml(yaml_path: Path) -> Dict[str, EntityState]:
+def parse_entity_state_yaml(yaml_path: Path) -> Dict[str, Dict[str, EntityState]]:
     """
     Parse data to create a list of EntityState objects.
     This method reads the yaml file from the provided path and converts it into
@@ -19,8 +19,10 @@ def parse_entity_state_yaml(yaml_path: Path) -> Dict[str, EntityState]:
     Args:
         yaml_path (Path): Path to the YAML file containing the entity state data.
     Returns:
-        Dict[str, EntityState]: A dictionary containing the initial state
-        entities and goal entities.
+        Dict[str, Dict[str, EntityState]]: A dictionary with two keys:
+            'initial_state_entities' and 'goal_entities', each containing a
+            dictionary mapping episode names to their corresponding EntityState
+            objects.
     """
 
     with open(yaml_path, "r") as file:

@@ -3,7 +3,7 @@ import rclpy
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
-from gazebo_test.utils.hunav_handler import HunavEvaluatortHandler
+from gazebo_test.utils.hunav_handler import HunavEvaluatorHandler
 from gazebo_test.utils.bag_recorder import BagRecorder
 from gazebo_test.utils.common_utils import (
     parse_entity_state_yaml,
@@ -13,6 +13,7 @@ from gazebo_msgs.msg import EntityState
 from geometry_msgs.msg import Pose, PoseStamped
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+import json
 import pandas as pd
 import time
 
@@ -30,39 +31,52 @@ class ExperimentManager(Node):
             "algorithm_name", Parameter.Type.STRING
         ).value
 
-        yaml_path = self.declare_parameter(
+        yaml_path_param = self.declare_parameter(
             "goals_and_poses_file",
             Parameter.Type.STRING,
         ).value
+        
+        if not yaml_path_param:
+            raise ValueError("Parameter 'goals_and_poses_file' must be provided")
+        yaml_path = str(yaml_path_param)
 
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
-        base_path = self.declare_parameter(
+        base_path = str(self.declare_parameter(
             "base_path",
-            f"bags/gazebo_test",
-        ).value
-        exp_prefix = yaml_path.split("/")[-1].split(".")[0]
+            "results/gazebo_test",
+        ).value)
+        exp_prefix = Path(yaml_path).stem
         self.base_path = Path(base_path).joinpath(
             f"{exp_prefix}_exp_{self.date}/",
         )
 
-        timeout_duration = self.declare_parameter(
+        timeout_duration = float(self.declare_parameter( 
             "timeout_duration", Parameter.Type.DOUBLE
+        ).value) # type: ignore
+        
+        self.use_recorder = bool(self.declare_parameter("use_recorder", Parameter.Type.BOOL).value)
+        self.use_evaluator = bool(
+            self.declare_parameter("use_evaluator", Parameter.Type.BOOL).value
+        )
+        self.repetitions = int(self.declare_parameter("repetitions", Parameter.Type.INTEGER).value)  # type: ignore
+        self.record_maps = bool(self.declare_parameter("record_maps", Parameter.Type.BOOL).value)
+        self.wait_before_start = int(
+            self.declare_parameter("wait_before_start", Parameter.Type.INTEGER).value # type: ignore
+        )
+        raw_checkpoint_path = self.declare_parameter(
+            "checkpoint_path",
+            str(Path.home() / f"{base_path}/.experiment_checkpoints/cache/{self.algorithm_name}"),
         ).value
-        self.use_recorder = self.declare_parameter(
-            "use_recorder", Parameter.Type.BOOL
-        ).value
-        self.use_evaluator = self.declare_parameter(
-            "use_evaluator", Parameter.Type.BOOL
-        ).value
-        self.repetitions = self.declare_parameter(
-            "repetitions", Parameter.Type.INTEGER
-        ).value
-        self.record_maps = self.declare_parameter(
-            "record_maps", Parameter.Type.BOOL
-        ).value
-        self.wait_before_start = self.declare_parameter(
-            "wait_before_start", Parameter.Type.INTEGER
-        ).value
+        
+        self.checkpoint_path = Path(str(raw_checkpoint_path)).expanduser()
+        
+        self.get_logger().info(
+            f"Checkpoint path set to: {self.checkpoint_path}"
+        )
+        self.resume_checkpoint = bool(
+            self.declare_parameter("resume_checkpoint", Parameter.Type.BOOL).value
+        )
+        self.get_logger().info(f"resume_checkpoint set to: {self.resume_checkpoint}")
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
@@ -72,13 +86,15 @@ class ExperimentManager(Node):
         if self.use_recorder:
             self.bag_recorder = BagRecorder(
                 self,
-                algorithm=self.algorithm_name,
-                base_path=self.base_path,
+                algorithm=self.algorithm_name, # type: ignore
+                base_path=self.base_path, # type: ignore
                 record_maps=self.record_maps,
             )
         if self.use_evaluator:
-            self.hunav_evaluator_handler = HunavEvaluatortHandler(
-                self, algorithm=self.algorithm_name, base_path=self.base_path
+            self.hunav_evaluator_handler = HunavEvaluatorHandler(
+                self,
+                algorithm=self.algorithm_name, # type: ignore
+                base_path=self.base_path, # type: Path
             )
 
         self.navigator = NavigationHandler(
@@ -96,8 +112,8 @@ class ExperimentManager(Node):
             self.experiment_outcomes_path.parent.mkdir(parents=True, exist_ok=True)
 
         entity_dictionary = parse_entity_state_yaml(Path(yaml_path))
-        self.initial_state_entities = entity_dictionary["initial_state_entities"]
-        self.goal_entities = entity_dictionary["goal_entities"]
+        self.initial_state_entities = entity_dictionary["initial_state_entities"] 
+        self.goal_entities = entity_dictionary["goal_entities"] 
 
         self.goal_box_xml = (
             Path(
@@ -106,6 +122,8 @@ class ExperimentManager(Node):
             .open("r")
             .read()
         )
+        self._experiment_identifier = Path(yaml_path).stem
+        self._checkpoint_data = self._load_checkpoint()
         self.end = False
         self.get_logger().info("ExperimentManager initialized")
         # set log level to debug
@@ -135,15 +153,26 @@ class ExperimentManager(Node):
         for experiment_tag in self.initial_state_entities.keys():
             self.get_logger().info(f"Starting {experiment_tag}")
             for i in range(self.repetitions):
-                result = await self.run_experiment(experiment_tag, i + 1)
+                run_id = i + 1
+                checkpoint_key = self._checkpoint_key(experiment_tag, run_id)
+                if (
+                    self.resume_checkpoint
+                    and (self._checkpoint_data.get(checkpoint_key) is not None)
+                ):
+                    self.get_logger().info(
+                        f"Skipping {experiment_tag} run {run_id} (already marked as Done in checkpoint)"
+                    )
+                    continue
+
+                result = await self.run_experiment(experiment_tag, run_id)
                 self.get_logger().info(
-                    f"Run {i + 1} for {experiment_tag} completed with result: {result}"
+                    f"Run {run_id} for {experiment_tag} completed with result: {result}"
                 )
                 # Save the result to the DataFrame
                 experiment_outcome = pd.DataFrame(
                     {
                         "experiment_tag": [experiment_tag],
-                        "run_id": [i + 1],
+                        "run_id": [run_id],
                         "result": [result],
                     }
                 )
@@ -165,6 +194,7 @@ class ExperimentManager(Node):
                     header=not self.experiment_outcomes_path.exists(),
                     index=False,
                 )
+                self._mark_checkpoint(checkpoint_key, str(result))
 
         await self.navigator.shutdown_navigation()
         self.get_logger().info("All experiments completed")
@@ -253,3 +283,35 @@ class ExperimentManager(Node):
         )
         await self.navigator.cancel_navigation()
         return experiment_result
+
+    def _checkpoint_key(self, experiment_tag: str, run_id: int) -> str:
+        algorithm = self.algorithm_name or "unknown"
+        return f"{algorithm}|{self._experiment_identifier}|{experiment_tag}|{run_id}"
+
+    def _load_checkpoint(self) -> Dict[str, str]:
+        if not self.checkpoint_path.exists():
+            return {}
+        try:
+            raw_data = json.loads(self.checkpoint_path.read_text())
+        except json.JSONDecodeError:
+            self.get_logger().warning(
+                f"Checkpoint file {self.checkpoint_path} is corrupted. Starting with an empty checkpoint."
+            )
+            return {}
+
+        if isinstance(raw_data, dict):
+            return {str(k): str(v) for k, v in raw_data.items()}
+        if isinstance(raw_data, list):
+            return {str(item): "Done" for item in raw_data}
+
+        return {}
+
+    def _mark_checkpoint(self, key: str, result: str) -> None:
+        self._checkpoint_data[key] = result
+        try:
+            self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            self.checkpoint_path.write_text(json.dumps(self._checkpoint_data, indent=2))
+        except OSError as exc:
+            self.get_logger().error(
+                f"Failed to write checkpoint file {self.checkpoint_path}: {exc}"
+            )

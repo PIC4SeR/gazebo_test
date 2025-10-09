@@ -1,5 +1,6 @@
 # for eache experiment, this class will trigger the evaluation of the experiment by using the hunav_evaluator class.
 import os
+from typing import Optional
 from rclpy.node import Node
 import rclpy
 from hunav_msgs.srv import StartEvaluation
@@ -11,14 +12,14 @@ from pathlib import Path
 import pandas as pd
 
 
-class HunavEvaluatortHandler:
-    def __init__(self, node: Node, algorithm: str = "test", base_path: str = ""):
+class HunavEvaluatorHandler:
+    def __init__(self, node: Node, algorithm: str = "test", base_path: Optional[Path] = None):
         """
-        Initialize the HunavEvaluatortHandler class.
+        Initialize the HunavEvaluatorHandler class.
         Args:
             node (Node): The ROS2 node to which the handler is attached.
             algorithm (str): The name of the algorithm being tested.
-            base_path (str): The base path for storing evaluation results."""
+            base_path (Path): The base path for storing evaluation results."""
         self.hunav_start_client = node.create_client(
             StartEvaluation, "hunav_start_recording"
         )
@@ -83,7 +84,7 @@ class HunavEvaluatortHandler:
 
         try:
             response = await self.hunav_start_client.call_async(req)
-            if response.success:
+            if response.success: # type: ignore
                 self.logger.debug("Hunav evaluator recording started successfully.")
                 return True
             else:
@@ -122,13 +123,13 @@ class HunavEvaluatortHandler:
         self.logger.debug(f"Setting result file path to {file_path}...")
         req = SetParameters.Request()
         req.parameters = [
-            rclpy.parameter.Parameter(
+            rclpy.Parameter(
                 "result_file", rclpy.Parameter.Type.STRING, file_path
             ).to_parameter_msg()
         ]
         try:
             response = await self.set_result_file_path_client.call_async(req)
-            for result in response.results:
+            for result in response.results: # type: ignore
                 if result.successful:
                     self.logger.debug("Result file path set successfully.")
                     continue

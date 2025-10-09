@@ -1,3 +1,4 @@
+from typing import Optional
 import rclpy
 from rclpy.node import Node
 from rclpy.serialization import serialize_message
@@ -45,7 +46,7 @@ class BagRecorder:
         self,
         node: Node,
         algorithm: str = "test",
-        base_path: str = "",
+        base_path: Optional[Path] = None,
         record_maps: bool = False,
     ):
         """
@@ -58,11 +59,11 @@ class BagRecorder:
         self.base_path = base_path
         self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
         if not self.base_path:
-            self.base_path = Path(f"bags/gazebo_test/exp_{self.date}/")
+            self.base_path = Path(f"results/gazebo_test/exp_{self.date}/")
         self.node = node
         self.writer = rosbag2_py.SequentialWriter()
         self.recording = False
-        self.logger = rclpy.logging.get_logger("bag_recorder")
+        self.logger = rclpy.logging.get_logger("bag_recorder") # type: ignore
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
@@ -89,8 +90,8 @@ class BagRecorder:
                 qos_profile=10,
             )
         # set the logger level of rosbag2_storage to warn
-        rosbag2_logger = rclpy.logging.get_logger("rosbag2_storage")
-        rosbag2_logger.set_level(rclpy.logging.LoggingSeverity.WARN)
+        rosbag2_logger = rclpy.logging.get_logger("rosbag2_storage") # type: ignore
+        rosbag2_logger.set_level(rclpy.logging.LoggingSeverity.WARN) # type: ignore
         self.logger.info(
             f"BagRecorder initialized with base path: {self.base_path}, algorithm: {self.algorithm}"
         )

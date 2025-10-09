@@ -63,3 +63,14 @@ class ExperimentManagerArgs:
         default_value="gazebo_experiments",
         description="Package containing the experiment manager configuration files",
     )
+    checkpoint_path: DeclareLaunchArgument = DeclareLaunchArgument(
+        "checkpoint_path",
+        default_value="",
+        description="Path to the checkpoint file used to resume experiments",
+    )
+    resume_checkpoint: DeclareLaunchArgument = DeclareLaunchArgument(
+        "resume_checkpoint",
+        choices=["true", "false", "True", "False"],
+        default_value="false",
+        description="Resume experiments by skipping runs already marked in the checkpoint",
+    )

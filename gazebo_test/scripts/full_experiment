@@ -3,6 +3,7 @@
 import argparse
 import textwrap
 import libtmux
+from libtmux.exc import LibTmuxException
 import os
 import time
 import argcomplete
@@ -132,6 +133,19 @@ def main():
     )
 
     run_parser.add_argument(
+        "--checkpoint-path",
+        action="store",
+        default=str(Path.home() / ".hunav_experiment_checkpoints.json"),
+        help="Path to the checkpoint file used to resume experiments.",
+    )
+
+    run_parser.add_argument(
+        "--resume-checkpoint",
+        action="store_true",
+        help="Resume experiments by skipping runs listed in the checkpoint file.",
+    )
+
+    run_parser.add_argument(
         "--evaluation-metrics-file",
         action="store",
         default=os.path.join(
@@ -216,7 +230,7 @@ def run(args: argparse.Namespace):
         if session_name in server.sessions:
             print(f"Session '{session_name}' already exists. Exiting.")
             return
-    except libtmux.exc.LibTmuxException:
+    except LibTmuxException:
         print("Tmux server not running. Starting a new server.")
 
     # Create a new tmux session
@@ -357,6 +371,16 @@ def run(args: argparse.Namespace):
             if args.wait_before_start
             else ""
         )
+        checkpoint_path = (
+            f"checkpoint_path:={Path(args.checkpoint_path).expanduser()}"
+            if args.checkpoint_path
+            else ""
+        )
+        resume_checkpoint = (
+            f"resume_checkpoint:={str(args.resume_checkpoint).lower()}"
+            if args.resume_checkpoint is not None
+            else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
@@ -365,6 +389,8 @@ def run(args: argparse.Namespace):
                 {algorithm_name} \
                 {exp_config_pkg} \
                 {wait_before_start} \
+                {checkpoint_path} \
+                {resume_checkpoint} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
         print("Started gazebo test")
