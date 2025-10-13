@@ -12,9 +12,8 @@ from hunav_msgs.msg import Agents
 from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import OccupancyGrid
 
-import os
+import shutil
 from pathlib import Path
-import time
 
 import rosbag2_py
 
@@ -54,16 +53,18 @@ class BagRecorder:
         Args:
             node (Node): The ROS2 node to which the BagRecorder is attached.
             algorithm (str): The name of the algorithm being tested.
-            base_path (str): The base path for storing bag files.
+            base_path (Optional[Path]): The base path for storing bag files.
         """
-        self.base_path = base_path
-        self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
-        if not self.base_path:
-            self.base_path = Path(f"results/gazebo_test/exp_{self.date}/")
+        if base_path:
+            self.base_path = Path(base_path).expanduser()
+        else:
+            self.base_path = Path("results/gazebo_test") / algorithm
+            self.base_path = self.base_path.expanduser()
+        self.base_path.mkdir(parents=True, exist_ok=True)
         self.node = node
         self.writer = rosbag2_py.SequentialWriter()
         self.recording = False
-        self.logger = rclpy.logging.get_logger("bag_recorder") # type: ignore
+        self.logger = rclpy.logging.get_logger("bag_recorder")  # type: ignore
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
@@ -90,8 +91,8 @@ class BagRecorder:
                 qos_profile=10,
             )
         # set the logger level of rosbag2_storage to warn
-        rosbag2_logger = rclpy.logging.get_logger("rosbag2_storage") # type: ignore
-        rosbag2_logger.set_level(rclpy.logging.LoggingSeverity.WARN) # type: ignore
+        rosbag2_logger = rclpy.logging.get_logger("rosbag2_storage")  # type: ignore
+        rosbag2_logger.set_level(rclpy.logging.LoggingSeverity.WARN)  # type: ignore
         self.logger.info(
             f"BagRecorder initialized with base path: {self.base_path}, algorithm: {self.algorithm}"
         )
@@ -101,9 +102,20 @@ class BagRecorder:
             self.logger.warn("Recording is already in progress.")
             return
         self.logger.debug("Starting recording...")
-        self.bag_path = Path(
-            f"{self.base_path}/{experiment_name}/{self.algorithm}/experiment_{run_id}/"
+        run_identifier = str(run_id)
+        run_suffix = (
+            f"experiment_{run_identifier}"
+            if run_identifier.isdigit()
+            else f"experiment_{run_identifier}"
         )
+        algorithm_root = self.base_path / experiment_name / self.algorithm
+        algorithm_root.mkdir(parents=True, exist_ok=True)
+        self.bag_path = algorithm_root / run_suffix
+        if self.bag_path.exists():
+            self.logger.warning(
+                f"Bag path {self.bag_path} already exists; replacing previous recording."
+            )
+            shutil.rmtree(self.bag_path)
         self.logger.debug(f"Bag path: {self.bag_path}")
 
         storage_options = rosbag2_py.StorageOptions(

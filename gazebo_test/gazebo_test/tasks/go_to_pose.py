@@ -9,13 +9,26 @@ from gazebo_test.utils.common_utils import (
     parse_entity_state_yaml,
     get_posestamped_from_entity,
 )
+from gazebo_test.utils.checkpoint_store import (
+    ExperimentCheckpointStore,
+    ExperimentJobDescriptor,
+)
 from gazebo_msgs.msg import EntityState
-from geometry_msgs.msg import Pose, PoseStamped
-from typing import Optional, List, Dict, Any
+from geometry_msgs.msg import PoseStamped
+from typing import List, Dict, Optional, Iterator
 from pathlib import Path
-import json
 import pandas as pd
-import time
+import os
+import socket
+import traceback
+import uuid
+import fcntl
+import hashlib
+import re
+from urllib.parse import urlparse
+
+import atexit
+from contextlib import contextmanager
 
 from gazebo_test.utils.navigation_handler import NavigationHandler
 
@@ -27,56 +40,108 @@ class ExperimentManager(Node):
     def __init__(self):
         super().__init__("experiment_manager")
 
-        self.algorithm_name = self.declare_parameter(
+        declared_algorithm = self.declare_parameter(
             "algorithm_name", Parameter.Type.STRING
         ).value
+        self.algorithm_name = str(declared_algorithm or "").strip() or "unknown"
 
         yaml_path_param = self.declare_parameter(
             "goals_and_poses_file",
             Parameter.Type.STRING,
         ).value
-        
+
         if not yaml_path_param:
             raise ValueError("Parameter 'goals_and_poses_file' must be provided")
         yaml_path = str(yaml_path_param)
 
-        self.date = time.strftime("%d_%m_%Y__%H_%M_%S")
-        base_path = str(self.declare_parameter(
+        base_path_value = self.declare_parameter(
             "base_path",
             "results/gazebo_test",
-        ).value)
-        exp_prefix = Path(yaml_path).stem
-        self.base_path = Path(base_path).joinpath(
-            f"{exp_prefix}_exp_{self.date}/",
+        ).value
+        self._base_path_root = Path(
+            str(base_path_value) or "results/gazebo_test"
+        ).expanduser()
+        self._experiment_identifier = Path(yaml_path).stem
+
+        timeout_duration = float(
+            self.declare_parameter("timeout_duration", Parameter.Type.DOUBLE).value  # type: ignore
         )
 
-        timeout_duration = float(self.declare_parameter( 
-            "timeout_duration", Parameter.Type.DOUBLE
-        ).value) # type: ignore
-        
-        self.use_recorder = bool(self.declare_parameter("use_recorder", Parameter.Type.BOOL).value)
+        self.use_recorder = bool(
+            self.declare_parameter("use_recorder", Parameter.Type.BOOL).value
+        )
         self.use_evaluator = bool(
             self.declare_parameter("use_evaluator", Parameter.Type.BOOL).value
         )
         self.repetitions = int(self.declare_parameter("repetitions", Parameter.Type.INTEGER).value)  # type: ignore
-        self.record_maps = bool(self.declare_parameter("record_maps", Parameter.Type.BOOL).value)
-        self.wait_before_start = int(
-            self.declare_parameter("wait_before_start", Parameter.Type.INTEGER).value # type: ignore
+        self.record_maps = bool(
+            self.declare_parameter("record_maps", Parameter.Type.BOOL).value
         )
-        raw_checkpoint_path = self.declare_parameter(
-            "checkpoint_path",
-            str(Path.home() / f"{base_path}/.experiment_checkpoints/cache/{self.algorithm_name}"),
+        self.wait_before_start = int(
+            self.declare_parameter("wait_before_start", Parameter.Type.INTEGER).value  # type: ignore
+        )
+        checkpoint_dsn_param = self.declare_parameter(
+            "checkpoint_dsn",
+            "",
         ).value
-        
-        self.checkpoint_path = Path(str(raw_checkpoint_path)).expanduser()
-        
+        env_checkpoint_dsn = os.environ.get("GAZEBO_TEST_CHECKPOINT_DSN", "")
+        checkpoint_dsn = str(checkpoint_dsn_param or "").strip()
+
+        if not checkpoint_dsn and env_checkpoint_dsn:
+            checkpoint_dsn = env_checkpoint_dsn.strip()
+        if not checkpoint_dsn:
+            raise ValueError(
+                "A PostgreSQL DSN must be provided via 'checkpoint_dsn' parameter or 'GAZEBO_TEST_CHECKPOINT_DSN' environment variable"
+            )
+        self.checkpoint_dsn = checkpoint_dsn
+
+        self._checkpoint_namespace = self._derive_checkpoint_namespace(
+            self.checkpoint_dsn
+        )
+        self.base_path = (
+            self._base_path_root
+            / self._checkpoint_namespace
+            / self.algorithm_name
+            / self._experiment_identifier
+        ).expanduser()
+        self.base_path.mkdir(parents=True, exist_ok=True)
         self.get_logger().info(
-            f"Checkpoint path set to: {self.checkpoint_path}"
+            f"Results base path set to: {self.base_path} (checkpoint namespace: {self._checkpoint_namespace})"
+        )
+
+        checkpoint_connect_timeout_param = self.declare_parameter(
+            "checkpoint_connect_timeout",
+            5.0,
+        ).value
+        if checkpoint_connect_timeout_param is None:
+            checkpoint_connect_timeout = 5.0
+        else:
+            checkpoint_connect_timeout = float(checkpoint_connect_timeout_param)
+
+        self.get_logger().info(
+            "Checkpoint database DSN configured for experiment checkpoints"
         )
         self.resume_checkpoint = bool(
             self.declare_parameter("resume_checkpoint", Parameter.Type.BOOL).value
         )
-        self.get_logger().info(f"resume_checkpoint set to: {self.resume_checkpoint}")
+        self.auto_recover_running = bool(
+            self.declare_parameter(
+                "auto_recover_running",
+                Parameter.Type.BOOL,
+            ).value
+        )
+        worker_id_param = self.declare_parameter(
+            "worker_id",
+            Parameter.Type.STRING,
+        ).value
+        if worker_id_param:
+            self.worker_id = str(worker_id_param)
+        else:
+            hostname = socket.gethostname()
+            pid = os.getpid()
+            suffix = uuid.uuid4().hex[:8]
+            self.worker_id = f"{hostname}-{pid}-{suffix}"
+        self.get_logger().info(f"Worker id set to: {self.worker_id}")
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
@@ -86,15 +151,15 @@ class ExperimentManager(Node):
         if self.use_recorder:
             self.bag_recorder = BagRecorder(
                 self,
-                algorithm=self.algorithm_name, # type: ignore
-                base_path=self.base_path, # type: ignore
+                algorithm=self.algorithm_name,  # type: ignore
+                base_path=self.base_path,  # type: ignore
                 record_maps=self.record_maps,
             )
         if self.use_evaluator:
             self.hunav_evaluator_handler = HunavEvaluatorHandler(
                 self,
-                algorithm=self.algorithm_name, # type: ignore
-                base_path=self.base_path, # type: Path
+                algorithm=self.algorithm_name,  # type: ignore
+                base_path=self.base_path,  # type: Path
             )
 
         self.navigator = NavigationHandler(
@@ -108,12 +173,11 @@ class ExperimentManager(Node):
         self.experiment_outcomes_path = Path(
             f"{self.base_path.resolve()}/{self.algorithm_name}_outcomes.csv"
         )
-        if not self.experiment_outcomes_path.exists():
-            self.experiment_outcomes_path.parent.mkdir(parents=True, exist_ok=True)
+        self._outcomes_lock_path = Path(f"{self.experiment_outcomes_path}.lock")
 
         entity_dictionary = parse_entity_state_yaml(Path(yaml_path))
-        self.initial_state_entities = entity_dictionary["initial_state_entities"] 
-        self.goal_entities = entity_dictionary["goal_entities"] 
+        self.initial_state_entities = entity_dictionary["initial_state_entities"]
+        self.goal_entities = entity_dictionary["goal_entities"]
 
         self.goal_box_xml = (
             Path(
@@ -122,8 +186,40 @@ class ExperimentManager(Node):
             .open("r")
             .read()
         )
-        self._experiment_identifier = Path(yaml_path).stem
-        self._checkpoint_data = self._load_checkpoint()
+        self.checkpoint_store = ExperimentCheckpointStore(
+            self.checkpoint_dsn,
+            connect_timeout_sec=checkpoint_connect_timeout,
+        )
+        if self.auto_recover_running:
+            recovered = self.checkpoint_store.recover_stale_jobs(
+                worker_hint=self.worker_id
+            )
+            if recovered:
+                self.get_logger().warning(
+                    f"Recovered {recovered} previously running job(s)"
+                )
+        job_descriptors: List[ExperimentJobDescriptor] = []
+        for experiment_tag in self.initial_state_entities.keys():
+            for run_id in range(1, self.repetitions + 1):
+                job_descriptors.append(
+                    ExperimentJobDescriptor(
+                        algorithm=self.algorithm_name,
+                        experiment_identifier=self._experiment_identifier,
+                        experiment_tag=experiment_tag,
+                        run_id=run_id,
+                    )
+                )
+        self.checkpoint_store.register_jobs(job_descriptors)
+        if not self.resume_checkpoint:
+            reset_count = self.checkpoint_store.reset_jobs(
+                algorithm=self.algorithm_name,
+                experiment_identifier=self._experiment_identifier,
+            )
+            self.get_logger().info(
+                f"Reset {reset_count} job(s) to PENDING for a fresh run"
+            )
+        self._active_job_id: Optional[int] = None
+        atexit.register(self._cleanup_active_job)
         self.end = False
         self.get_logger().info("ExperimentManager initialized")
         # set log level to debug
@@ -150,25 +246,29 @@ class ExperimentManager(Node):
         This method will run the experiments for each experiment_tag defined in the YAML file.
         """
         self.get_logger().debug("Running experiments ...")
-        for experiment_tag in self.initial_state_entities.keys():
-            self.get_logger().info(f"Starting {experiment_tag}")
-            for i in range(self.repetitions):
-                run_id = i + 1
-                checkpoint_key = self._checkpoint_key(experiment_tag, run_id)
-                if (
-                    self.resume_checkpoint
-                    and (self._checkpoint_data.get(checkpoint_key) is not None)
-                ):
-                    self.get_logger().info(
-                        f"Skipping {experiment_tag} run {run_id} (already marked as Done in checkpoint)"
+        while True:
+            job = self.checkpoint_store.claim_next_job(
+                algorithm=self.algorithm_name,
+                experiment_identifier=self._experiment_identifier,
+                worker_id=self.worker_id,
+            )
+            if job is None:
+                break
+            experiment_tag = job.experiment_tag
+            run_id = job.run_id
+            self.get_logger().info(
+                f"Worker {self.worker_id} starting {experiment_tag} run {run_id}"
+            )
+            self._active_job_id = job.id
+            try:
+                if not self.experiment_outcomes_path.exists():
+                    self.experiment_outcomes_path.parent.mkdir(
+                        parents=True, exist_ok=True
                     )
-                    continue
-
                 result = await self.run_experiment(experiment_tag, run_id)
                 self.get_logger().info(
                     f"Run {run_id} for {experiment_tag} completed with result: {result}"
                 )
-                # Save the result to the DataFrame
                 experiment_outcome = pd.DataFrame(
                     {
                         "experiment_tag": [experiment_tag],
@@ -177,24 +277,41 @@ class ExperimentManager(Node):
                     }
                 )
                 if self.use_evaluator:
-                    # Add additional columns for hunav evaluator results
                     hunav_results = self.hunav_evaluator_handler.get_result_df()
-                    # Merge hunav results into the DataFrame
                     experiment_outcome = pd.merge(
                         experiment_outcome,
                         hunav_results,
                         on=["experiment_tag", "run_id"],
                         how="left",
                     )
-
-                # Append the result to the CSV file
-                experiment_outcome.to_csv(
-                    self.experiment_outcomes_path,
-                    mode="a",
-                    header=not self.experiment_outcomes_path.exists(),
-                    index=False,
+                with self._acquire_outcomes_lock():
+                    file_exists = self.experiment_outcomes_path.exists()
+                    experiment_outcome.to_csv(
+                        self.experiment_outcomes_path,
+                        mode="a",
+                        header=not file_exists,
+                        index=False,
+                    )
+                    # sort the outcomes file by experiment_tag and run_id
+                    df = pd.read_csv(self.experiment_outcomes_path)
+                    df = df.sort_values(by=["experiment_tag", "run_id"])
+                    df.to_csv(
+                        self.experiment_outcomes_path,
+                        mode="w",
+                        header=True,
+                        index=False,
+                    )
+                self.checkpoint_store.mark_job_done(job.id, str(result))
+                self._active_job_id = None
+            except Exception as exc:  # noqa: BLE001
+                error_message = (
+                    f"Experiment {experiment_tag} run {run_id} failed: {exc}"
                 )
-                self._mark_checkpoint(checkpoint_key, str(result))
+                self.get_logger().error(error_message)
+                self.get_logger().debug(traceback.format_exc())
+                self.checkpoint_store.mark_job_failed(job.id, error_message)
+                self._active_job_id = None
+                raise
 
         await self.navigator.shutdown_navigation()
         self.get_logger().info("All experiments completed")
@@ -284,34 +401,73 @@ class ExperimentManager(Node):
         await self.navigator.cancel_navigation()
         return experiment_result
 
-    def _checkpoint_key(self, experiment_tag: str, run_id: int) -> str:
-        algorithm = self.algorithm_name or "unknown"
-        return f"{algorithm}|{self._experiment_identifier}|{experiment_tag}|{run_id}"
+    @contextmanager
+    def _acquire_outcomes_lock(self) -> Iterator[None]:
+        self._outcomes_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._outcomes_lock_path.open("a+") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def _load_checkpoint(self) -> Dict[str, str]:
-        if not self.checkpoint_path.exists():
-            return {}
+    @staticmethod
+    def _derive_checkpoint_namespace(dsn: str) -> str:
+        digest = hashlib.sha256(dsn.encode("utf-8")).hexdigest()[:12]
+        components: List[str] = []
+        parsed = urlparse(dsn)
+        if parsed.scheme:
+            if parsed.hostname:
+                components.append(parsed.hostname)
+            if parsed.path and parsed.path not in {"", "/"}:
+                components.append(parsed.path.strip("/"))
+            if parsed.port:
+                components.append(str(parsed.port))
+        if not components:
+            for key, value in re.findall(r"([A-Za-z_]+)=([^\s]+)", dsn):
+                if key.lower() in {"dbname", "database", "host", "port"} and value:
+                    components.append(value)
+        sanitized = [
+            re.sub(r"[^A-Za-z0-9_.-]+", "_", piece.strip())
+            for piece in components
+            if piece.strip()
+        ]
+        label = "_".join(filter(None, sanitized))
+        if label:
+            return f"{label}__{digest}"
+        return f"checkpoint__{digest}"
+
+    def _cleanup_active_job(self) -> None:
+        if self._active_job_id is None:
+            return
         try:
-            raw_data = json.loads(self.checkpoint_path.read_text())
-        except json.JSONDecodeError:
-            self.get_logger().warning(
-                f"Checkpoint file {self.checkpoint_path} is corrupted. Starting with an empty checkpoint."
+            recovery_message = f"Worker {self.worker_id} terminated before finishing job {self._active_job_id}"
+            self.checkpoint_store.mark_job_failed(
+                self._active_job_id,
+                recovery_message,
             )
-            return {}
+        except Exception:  # noqa: BLE001
+            # Avoid raising during interpreter shutdown; logging may be unavailable.
+            pass
+        finally:
+            self._active_job_id = None
 
-        if isinstance(raw_data, dict):
-            return {str(k): str(v) for k, v in raw_data.items()}
-        if isinstance(raw_data, list):
-            return {str(item): "Done" for item in raw_data}
+    @property
+    def experiment_identifier(self) -> str:
+        return self._experiment_identifier
 
-        return {}
+    @property
+    def checkpoint_namespace(self) -> str:
+        return self._checkpoint_namespace
 
-    def _mark_checkpoint(self, key: str, result: str) -> None:
-        self._checkpoint_data[key] = result
-        try:
-            self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            self.checkpoint_path.write_text(json.dumps(self._checkpoint_data, indent=2))
-        except OSError as exc:
-            self.get_logger().error(
-                f"Failed to write checkpoint file {self.checkpoint_path}: {exc}"
-            )
+    @staticmethod
+    def _looks_like_dsn(candidate: str) -> bool:
+        if not candidate:
+            return False
+        if "://" in candidate:
+            return True
+        if "=" in candidate:
+            return True
+        return candidate.lower().startswith(
+            "postgresql"
+        ) or candidate.lower().startswith("postgres")

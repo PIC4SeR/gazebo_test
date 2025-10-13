@@ -63,10 +63,10 @@ class ExperimentManagerArgs:
         default_value="gazebo_experiments",
         description="Package containing the experiment manager configuration files",
     )
-    checkpoint_path: DeclareLaunchArgument = DeclareLaunchArgument(
-        "checkpoint_path",
+    checkpoint_dsn: DeclareLaunchArgument = DeclareLaunchArgument(
+        "checkpoint_dsn",
         default_value="",
-        description="Path to the checkpoint file used to resume experiments",
+        description="PostgreSQL DSN for the shared checkpoint store",
     )
     resume_checkpoint: DeclareLaunchArgument = DeclareLaunchArgument(
         "resume_checkpoint",

@@ -20,7 +20,12 @@ from gazebo_test.script_utils.parsing_utils import (
     get_experiment_ids,
 )
 
-from gazebo_test.script_utils.navigator_utils import get_navigator_yaml, list_available_navigators
+from gazebo_test.script_utils.navigator_utils import (
+    get_navigator_yaml,
+    list_available_navigators,
+)
+
+from gazebo_test.utils.checkpoint_store import ExperimentCheckpointStore
 
 
 def _print_experiments():
@@ -31,6 +36,7 @@ def _print_experiments():
     print("Available experiments:\n")
     for name in experiment_names:
         print(f"      - {name}")
+
 
 def _print_navigators():
     """
@@ -123,20 +129,20 @@ def main():
         default=None,
         help="The path to the navigation parameters file",
     )
-    
+
     run_parser.add_argument(
         "--navigator",
         action="store",
         default=None,
         help="The navigation controller to use. \
-        Hint: Use 'list' command to see all available controllers."
+        Hint: Use 'list' command to see all available controllers.",
     )
 
     run_parser.add_argument(
-        "--checkpoint-path",
+        "--checkpoint-dsn",
         action="store",
-        default=str(Path.home() / ".hunav_experiment_checkpoints.json"),
-        help="Path to the checkpoint file used to resume experiments.",
+        default=os.environ.get("GAZEBO_TEST_CHECKPOINT_DSN", ""),
+        help="PostgreSQL DSN for the shared checkpoint store.",
     )
 
     run_parser.add_argument(
@@ -200,9 +206,13 @@ def main():
 
     run_parser.set_defaults(func=run)
     ls_parser = sub_parser.add_parser("list", help="List all available experiments.")
-    ls_parser.set_defaults(func=lambda args: [_print_experiments(), # new line
-                                             print(""), # new line
-                                             _print_navigators()]) # new line
+    ls_parser.set_defaults(
+        func=lambda args: [
+            _print_experiments(),  # new line
+            print(""),  # new line
+            _print_navigators(),
+        ]
+    )  # new line
     argcomplete.autocomplete(main_parser, always_complete_options=False)
 
     args = main_parser.parse_args()
@@ -219,6 +229,30 @@ def run(args: argparse.Namespace):
         world_pkg_name,
         agents_pkg_name,
     ) = parse_experiment_name(args.experiment)
+
+    checkpoint_dsn_value = (args.checkpoint_dsn or "").strip()
+    selected_algorithm_name = (args.algorithm_name or "").strip()
+    if not selected_algorithm_name:
+        selected_algorithm_name = (args.navigator or "").strip()
+    if not selected_algorithm_name:
+        selected_algorithm_name = "unknown"
+    experiment_identifier = Path(goals_and_poses).stem
+
+    if checkpoint_dsn_value:
+        try:
+            checkpoint_store = ExperimentCheckpointStore(checkpoint_dsn_value)
+            if not checkpoint_store.has_incomplete_jobs(  # type: ignore[attr-defined]
+                algorithm=selected_algorithm_name,
+                experiment_identifier=experiment_identifier,
+            ):
+                print(
+                    "All experiment runs are already completed according to the checkpoint store; skipping launch."
+                )
+                return
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"Warning: unable to query checkpoint store ({exc}); proceeding with full launch."
+            )
 
     ros_domain_id, gazebo_uri = isolate_experiment(args.ros_domain_id)
     # Create a new tmux server
@@ -371,11 +405,11 @@ def run(args: argparse.Namespace):
             if args.wait_before_start
             else ""
         )
-        checkpoint_path = (
-            f"checkpoint_path:={Path(args.checkpoint_path).expanduser()}"
-            if args.checkpoint_path
-            else ""
-        )
+        checkpoint_arg = ""
+        if checkpoint_dsn_value:
+            checkpoint_arg = f"checkpoint_dsn:={checkpoint_dsn_value}"
+            print("Using PostgreSQL checkpoint store via provided DSN")
+
         resume_checkpoint = (
             f"resume_checkpoint:={str(args.resume_checkpoint).lower()}"
             if args.resume_checkpoint is not None
@@ -389,7 +423,7 @@ def run(args: argparse.Namespace):
                 {algorithm_name} \
                 {exp_config_pkg} \
                 {wait_before_start} \
-                {checkpoint_path} \
+                {checkpoint_arg} \
                 {resume_checkpoint} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
@@ -405,10 +439,18 @@ def run(args: argparse.Namespace):
             # retrieve the log of the gazebo test
             current_panel = "".join(pane.capture_pane())
             # get the path of the log file
-            log_path = current_panel.split("saved to ")[-1].split("[")[0]
-            # remove leading and trailing spaces
-            log_path = log_path.strip()
-            print_summary(Path(log_path))
+            log_path: Optional[str] = None
+            for line in current_panel.splitlines():
+                if "Experiment outcomes saved to" in line:
+                    log_path = line.split("Experiment outcomes saved to", 1)[1]
+                    log_path = log_path.split("[")[0].strip()
+                    break
+            if log_path:
+                print_summary(Path(log_path))
+            else:
+                print(
+                    "Unable to locate the experiment outcomes file in the log output; summary not generated."
+                )
             # wait until the keyboard interrupt
             if args.wait_after_finish:
                 print("Press Ctrl+C to exit...")

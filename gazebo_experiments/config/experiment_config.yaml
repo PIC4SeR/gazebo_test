@@ -9,7 +9,7 @@ experiment_manager:
     record_maps: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the bag recorder will record the map topics)
     wait_before_start: #THIS IS SET IN THE LAUNCH FILE (default: None) (Number of seconds to wait before starting the experiment to let the environment settle)
     resume_checkpoint: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will resume from the last checkpoint)
-    checkpoint_path: #THIS IS SET IN THE LAUNCH FILE (default: "{base_path}/.experiment_checkpoints/cache/{self.algorithm_name}") (Path to the checkpoint file)
+    checkpoint_dsn: #THIS IS SET IN THE LAUNCH FILE (default: None) (PostgreSQL DSN for the checkpoint store)
     algorithm_name: "test_algorithm"
     base_path: "/workspaces/hunavsim_devcontainer/results/gazebo_experiments"
     timeout_duration: 60.0

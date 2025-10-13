@@ -36,7 +36,7 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     )
     wait_before_start: DeclareLaunchArgument = ExperimentManagerArgs.wait_before_start
     exp_config_pkg: DeclareLaunchArgument = ExperimentManagerArgs.exp_config_pkg
-    checkpoint_path: DeclareLaunchArgument = ExperimentManagerArgs.checkpoint_path
+    checkpoint_dsn: DeclareLaunchArgument = ExperimentManagerArgs.checkpoint_dsn
     resume_checkpoint: DeclareLaunchArgument = ExperimentManagerArgs.resume_checkpoint
 
 
