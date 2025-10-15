@@ -30,6 +30,17 @@
         current_path_weight: 1.0
         current_cmds_weight: 0.5
         max_agents: 3
+        overall_cost:
+          enable_social_work: {% if controller.social_work_cost is defined %}{{ controller.social_work_cost | lower }}{% else %}false{% endif %}
+
+          enable_social_angle: {% if controller.social_angle_cost is defined %}{{ controller.social_angle_cost | lower }}{% else %}false{% endif %}
+          
+          enable_social_proxemics: {% if controller.social_proxemics_cost is defined %}{{ controller.social_proxemics_cost | lower }}{% else %}false{% endif %}
+          
+          enable_social_path_follow: {% if controller.social_path_follow_cost is defined %}{{ controller.social_path_follow_cost | lower }}{% else %}false{% endif %}
+          
+          enable_social_path_align: {% if controller.social_path_align_cost is defined %}{{ controller.social_path_align_cost | lower }}{% else %}false{% endif %}
+        
         weights:
           distance_weight: 20.0
           social_weight: 400.0
