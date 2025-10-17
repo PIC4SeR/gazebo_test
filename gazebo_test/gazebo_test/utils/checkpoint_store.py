@@ -9,7 +9,7 @@ coordinated across machines.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Iterable, List, Optional, Sequence
 
 import psycopg
@@ -98,9 +98,10 @@ class ExperimentCheckpointStore:
                         run_id,
                         status,
                         created_at,
-                        updated_at
+                        updated_at,
+                        heartbeat_at
                     ) VALUES (%(algorithm)s, %(experiment_identifier)s, %(experiment_tag)s, %(run_id)s,
-                              'PENDING', %(ts)s, %(ts)s)
+                              'PENDING', %(ts)s, %(ts)s, NULL)
                     ON CONFLICT (algorithm, experiment_identifier, experiment_tag, run_id)
                     DO NOTHING
                     """,
@@ -131,7 +132,8 @@ class ExperimentCheckpointStore:
                     UPDATE jobs
                        SET status = 'FAILED',
                            updated_at = %(ts)s,
-                           result = COALESCE(result, %(note)s)
+                           result = COALESCE(result, %(note)s),
+                           heartbeat_at = NULL
                      WHERE status = 'RUNNING'
                     """,
                     {"ts": self._timestamp(), "note": recovery_note},
@@ -181,7 +183,8 @@ class ExperimentCheckpointStore:
                     UPDATE jobs
                        SET status = 'RUNNING',
                            worker_id = %(worker_id)s,
-                           updated_at = %(ts)s
+                           updated_at = %(ts)s,
+                           heartbeat_at = %(ts)s
                      WHERE id = %(job_id)s
                     """,
                     {"worker_id": worker_id, "ts": now_ts, "job_id": job_id},
@@ -240,9 +243,9 @@ class ExperimentCheckpointStore:
 
         statuses: Sequence[str]
         if include_running:
-            statuses = ("PENDING", "RUNNING")
+            statuses = ("PENDING", "RUNNING", "FAILED")
         else:
-            statuses = ("PENDING",)
+            statuses = ("PENDING", "FAILED")
         with psycopg.connect(
             self._dsn,
             autocommit=True,
@@ -266,6 +269,130 @@ class ExperimentCheckpointStore:
                 )
                 return cur.fetchone() is not None
 
+    def refresh_job_heartbeat(self, job_id: int, worker_id: str) -> bool:
+        """Update the heartbeat timestamp for a RUNNING job.
+
+        Returns True when the heartbeat was updated; False if the job is no longer
+        owned by the worker (e.g. requeued or finished).
+        """
+
+        now_ts = self._timestamp()
+        with psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            connect_timeout=self._connect_timeout,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE jobs
+                       SET heartbeat_at = %(ts)s,
+                           updated_at = %(ts)s
+                     WHERE id = %(job_id)s
+                       AND worker_id = %(worker_id)s
+                       AND status = 'RUNNING'
+                    """,
+                    {"ts": now_ts, "job_id": job_id, "worker_id": worker_id},
+                )
+                return cur.rowcount == 1
+
+    def requeue_stale_jobs(
+        self,
+        *,
+        algorithm: str,
+        experiment_identifier: str,
+        heartbeat_timeout_sec: float,
+    ) -> int:
+        """Move RUNNING jobs without recent heartbeats back to PENDING."""
+
+        timeout = max(heartbeat_timeout_sec, 0.0)
+        threshold_dt = datetime.now(timezone.utc) - timedelta(seconds=timeout)
+        threshold = threshold_dt.isoformat()
+        note = (
+            f"Requeued after missing heartbeat for {timeout:.1f}s"
+            if timeout > 0
+            else "Requeued after missing heartbeat"
+        )
+        with psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            connect_timeout=self._connect_timeout,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE jobs
+                       SET status = 'PENDING',
+                           worker_id = NULL,
+                           result = COALESCE(result, %(note)s),
+                           updated_at = %(ts)s,
+                           heartbeat_at = NULL
+                     WHERE algorithm = %(algorithm)s
+                       AND experiment_identifier = %(experiment_identifier)s
+                       AND status = 'RUNNING'
+                       AND (heartbeat_at IS NULL OR heartbeat_at < %(threshold)s)
+                    """,
+                    {
+                        "algorithm": algorithm,
+                        "experiment_identifier": experiment_identifier,
+                        "threshold": threshold,
+                        "note": note,
+                        "ts": self._timestamp(),
+                    },
+                )
+                return cur.rowcount or 0
+
+    def force_requeue_job(
+        self,
+        job_id: int,
+        *,
+        reason: Optional[str] = None,
+        expected_worker_id: Optional[str] = None,
+    ) -> bool:
+        """Force a RUNNING job back to PENDING immediately.
+
+        Args:
+            job_id: Identifier of the job to requeue.
+            reason: Optional note to persist as the job result.
+            expected_worker_id: When provided, only requeue the job if the
+                worker currently assigned matches this value.
+
+        Returns:
+            True when the job was transitioned to PENDING, False otherwise.
+        """
+
+        note = reason or "Requeued by watchdog request"
+        params: Dict[str, object] = {
+            "job_id": job_id,
+            "note": note,
+            "ts": self._timestamp(),
+        }
+        worker_clause = ""
+        if expected_worker_id is not None:
+            params["worker_id"] = expected_worker_id
+            worker_clause = " AND worker_id = %(worker_id)s"
+        query = (
+            """
+            UPDATE jobs
+               SET status = 'PENDING',
+                   worker_id = NULL,
+                   result = COALESCE(result, %(note)s),
+                   updated_at = %(ts)s,
+                   heartbeat_at = NULL
+             WHERE id = %(job_id)s
+               AND status = 'RUNNING'
+            """
+            + worker_clause
+        )
+        with psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            connect_timeout=self._connect_timeout,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                return cur.rowcount == 1
+
     def mark_job_done(self, job_id: int, result: str) -> None:
         """Mark a job as successfully completed."""
 
@@ -280,7 +407,8 @@ class ExperimentCheckpointStore:
                     UPDATE jobs
                        SET status = 'DONE',
                            result = %(result)s,
-                           updated_at = %(ts)s
+                           updated_at = %(ts)s,
+                           heartbeat_at = NULL
                      WHERE id = %(job_id)s
                     """,
                     {"result": result, "ts": self._timestamp(), "job_id": job_id},
@@ -300,7 +428,8 @@ class ExperimentCheckpointStore:
                     UPDATE jobs
                        SET status = 'FAILED',
                            result = %(msg)s,
-                           updated_at = %(ts)s
+                           updated_at = %(ts)s,
+                           heartbeat_at = NULL
                      WHERE id = %(job_id)s
                     """,
                     {"msg": error_message, "ts": self._timestamp(), "job_id": job_id},
@@ -358,7 +487,8 @@ class ExperimentCheckpointStore:
                        SET status = 'PENDING',
                            result = NULL,
                            worker_id = NULL,
-                           updated_at = %(ts)s
+                                                     updated_at = %(ts)s,
+                                                     heartbeat_at = NULL
                      WHERE algorithm = %(algorithm)s
                        AND experiment_identifier = %(experiment_identifier)s
                     """,
@@ -368,6 +498,45 @@ class ExperimentCheckpointStore:
                         "ts": self._timestamp(),
                     },
                 )
+                return cur.rowcount or 0
+
+    def requeue_failed_jobs(
+        self,
+        *,
+        algorithm: Optional[str] = None,
+        experiment_identifier: Optional[str] = None,
+    ) -> int:
+        """Mark FAILED jobs as PENDING so they can be re-run."""
+
+        clauses: List[sql.SQL] = [sql.SQL("status = 'FAILED'")]
+        params: Dict[str, object] = {"ts": self._timestamp()}
+        if algorithm is not None:
+            clauses.append(sql.SQL("algorithm = %(algorithm)s"))
+            params["algorithm"] = algorithm
+        if experiment_identifier is not None:
+            clauses.append(sql.SQL("experiment_identifier = %(experiment_identifier)s"))
+            params["experiment_identifier"] = experiment_identifier
+        where_clause = sql.SQL(" AND ").join(clauses)
+
+        query = sql.SQL(
+            """
+            UPDATE jobs
+               SET status = 'PENDING',
+                   result = NULL,
+                   worker_id = NULL,
+                   updated_at = %(ts)s,
+                   heartbeat_at = NULL
+             WHERE {}
+        """
+        ).format(where_clause)
+
+        with psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            connect_timeout=self._connect_timeout,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
                 return cur.rowcount or 0
 
     # --- internals --------------------------------------------------
@@ -391,6 +560,7 @@ class ExperimentCheckpointStore:
                         worker_id TEXT,
                         created_at TIMESTAMPTZ NOT NULL,
                         updated_at TIMESTAMPTZ NOT NULL,
+                        heartbeat_at TIMESTAMPTZ,
                         UNIQUE (algorithm, experiment_identifier, experiment_tag, run_id)
                     )
                     """,
@@ -400,6 +570,19 @@ class ExperimentCheckpointStore:
                     CREATE INDEX IF NOT EXISTS idx_jobs_pending
                         ON jobs (algorithm, experiment_identifier, run_id)
                      WHERE status = 'PENDING'
+                    """,
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE jobs
+                    ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ
+                    """,
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_jobs_running_heartbeat
+                        ON jobs (algorithm, experiment_identifier, heartbeat_at)
+                     WHERE status = 'RUNNING'
                     """,
                 )
 

@@ -241,14 +241,19 @@ def run(args: argparse.Namespace):
     if checkpoint_dsn_value:
         try:
             checkpoint_store = ExperimentCheckpointStore(checkpoint_dsn_value)
-            if not checkpoint_store.has_incomplete_jobs(  # type: ignore[attr-defined]
+            existing_jobs = checkpoint_store.list_jobs(  # type: ignore[attr-defined]
                 algorithm=selected_algorithm_name,
                 experiment_identifier=experiment_identifier,
-            ):
-                print(
-                    "All experiment runs are already completed according to the checkpoint store; skipping launch."
-                )
-                return
+            )
+            if existing_jobs:
+                if not checkpoint_store.has_incomplete_jobs(  # type: ignore[attr-defined]
+                    algorithm=selected_algorithm_name,
+                    experiment_identifier=experiment_identifier,
+                ):
+                    print(
+                        "All experiment runs are already completed according to the checkpoint store; skipping launch."
+                    )
+                    return
         except Exception as exc:  # noqa: BLE001
             print(
                 f"Warning: unable to query checkpoint store ({exc}); proceeding with full launch."
