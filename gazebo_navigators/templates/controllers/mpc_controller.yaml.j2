@@ -30,7 +30,7 @@
         current_path_weight: 1.0
         current_cmds_weight: 0.5
         max_agents: 3
-        overall_cost:
+        critics:
           enable_social_work: {% if controller.social_work_cost is defined %}{{ controller.social_work_cost | lower }}{% else %}false{% endif %}
 
           enable_social_angle: {% if controller.social_angle_cost is defined %}{{ controller.social_angle_cost | lower }}{% else %}false{% endif %}

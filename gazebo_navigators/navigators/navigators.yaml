@@ -15,6 +15,13 @@ navigators:
   - ORCA
   - PURE_SFM
   - MPC_base
+  - MPC_base_no_costs
+  - MPC_base_no_angle_cost
+  - MPC_base_no_proxemics_cost
+  - MPC_base_no_work_cost
+  - MPC_base_only_work_cost
+  - MPC_base_only_angle_cost
+  - MPC_base_only_proxemics_cost
   - MPC_social_motion
   - MPC_enlarged_state
   - MPC_enlarged_state_no_angle_cost
@@ -141,6 +148,116 @@ MPC_base:
     controller:
       name: mpc
       base: true
+      social_work_cost: true
+      social_angle_cost: true
+      social_proxemics_cost: true
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_no_costs:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: false
+      social_angle_cost: false
+      social_proxemics_cost: false
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_no_angle_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: true
+      social_angle_cost: false
+      social_proxemics_cost: true
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_no_proxemics_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: true
+      social_angle_cost: true
+      social_proxemics_cost: false
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_no_work_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: false
+      social_angle_cost: true
+      social_proxemics_cost: true
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_only_work_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: true
+      social_angle_cost: false
+      social_proxemics_cost: false
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+MPC_base_only_angle_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: false
+      social_angle_cost: true
+      social_proxemics_cost: false
+      social_path_follow_cost: true
+      social_path_align_cost: true
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+  
+MPC_base_only_proxemics_cost:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: mpc
+      base: true
+      social_work_cost: false
+      social_angle_cost: false
+      social_proxemics_cost: true
+      social_path_follow_cost: true
+      social_path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
