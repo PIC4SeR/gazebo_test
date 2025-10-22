@@ -112,6 +112,7 @@ def generate_launch_description():
                 parameters=[configured_params, {"autostart": autostart}],
                 arguments=["--ros-args", "--log-level", log_level],
                 remappings=remappings,
+                emulate_tty=True,
                 output="screen",
                 namespace=namespace,
             ),
@@ -128,7 +129,7 @@ def generate_launch_description():
                     "use_respawn": use_respawn,
                     "container_name": "nav2_container",
                 },
-                namespace=namespace,
+                namespace=namespace,  # type: ignore
             ),
         ]
     )

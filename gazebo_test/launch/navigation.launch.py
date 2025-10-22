@@ -117,8 +117,11 @@ def generate_launch_description():
     # https://github.com/ros/robot_state_publisher/pull/30
     # TODO(orduno) Substitute with `PushNodeRemapping`
     #              https://github.com/ros2/launch_ros/issues/56
-    remappings = [("/tf", "tf"), ("/tf_static", "tf_static"),
-                  ("people", "jackal/detected_people")]
+    remappings = [
+        ("/tf", "tf"),
+        ("/tf_static", "tf_static"),
+        ("people", "jackal/detected_people"),
+    ]
 
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {
@@ -147,7 +150,9 @@ def generate_launch_description():
             Node(
                 package="nav2_controller",
                 executable="controller_server",
+                name="controller_server",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -159,6 +164,7 @@ def generate_launch_description():
                 executable="smoother_server",
                 name="smoother_server",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -170,6 +176,7 @@ def generate_launch_description():
                 executable="planner_server",
                 name="planner_server",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -181,6 +188,7 @@ def generate_launch_description():
                 executable="behavior_server",
                 name="behavior_server",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -192,6 +200,7 @@ def generate_launch_description():
                 executable="bt_navigator",
                 name="bt_navigator",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -203,6 +212,7 @@ def generate_launch_description():
                 executable="velocity_smoother",
                 name="velocity_smoother",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
@@ -215,6 +225,7 @@ def generate_launch_description():
                 executable="map_server",
                 name="map_server",
                 output="screen",
+                emulate_tty=True,
                 respawn=use_respawn,
                 respawn_delay=2.0,
                 parameters=[configured_params],
