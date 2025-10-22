@@ -7,6 +7,7 @@ controller_templates:
   - orca
   - pure_sfm
   - mpc
+  - crowdnav
   
 dwa:
   template: 'controllers/dwa_controller.yaml.j2'
@@ -26,3 +27,6 @@ pure_sfm:
 mpc:
   template: 'controllers/mpc_controller.yaml.j2'
   description: 'Model Predictive Control controller'
+crowdnav:
+  template: 'controllers/crowdnav_controller.yaml.j2'
+  description: 'CrowdNav RL-based controller using Pybind11'

@@ -14,6 +14,8 @@ navigators:
   - social_MPPI
   - ORCA
   - PURE_SFM
+  - SARL
+  - CADRL
   - MPC_base
   - MPC_base_no_costs
   - MPC_base_no_angle_cost
@@ -142,6 +144,26 @@ PURE_SFM:
         - obstacle_layer
         - inflation_layer
 
+SARL:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: crowdnav
+      policy_name: "sarl"
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+
+CADRL:
+  nav_template: 
+    name: only_controller
+    controller:
+      name: crowdnav
+      policy_name: "cadrl"
+      costmap_layers:
+        - obstacle_layer
+        - inflation_layer
+        
 MPC_base:
   nav_template: 
     name: only_controller
