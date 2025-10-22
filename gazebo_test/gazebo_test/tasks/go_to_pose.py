@@ -1,4 +1,3 @@
-from collections import defaultdict, deque
 from rclpy.node import Node
 import rclpy
 
@@ -10,13 +9,9 @@ from gazebo_test.utils.common_utils import (
     parse_entity_state_yaml,
     get_posestamped_from_entity,
 )
-from gazebo_test.utils.checkpoint_store import (
-    ExperimentCheckpointStore,
-    ExperimentJobDescriptor,
-)
 from gazebo_msgs.msg import EntityState
 from geometry_msgs.msg import PoseStamped
-from typing import List, Dict, Optional, Iterator, Set, Tuple, Union, Deque
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 from pathlib import Path
 import pandas as pd
 import os
@@ -27,54 +22,21 @@ import fcntl
 import hashlib
 import re
 import asyncio
-import fnmatch
-import time
 from urllib.parse import urlparse
 
 import atexit
 from contextlib import contextmanager
 
 from gazebo_test.utils.navigation_handler import NavigationHandler
-from rcl_interfaces.msg import Log as RosoutLog
-from rclpy.qos import QoSProfile
-
-
-def _coerce_ros_log_level(value: Union[int, float, str, bytes, bytearray]) -> int:
-    """Normalize ROS log level values to plain integers."""
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (bytes, bytearray)):
-        # uint8 constants in ROS messages may show up as single-byte strings
-        return int.from_bytes(value, byteorder="little", signed=False)
-    if isinstance(value, (int,)):  # noqa: UP036
-        return int(value)
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        cleaned = value.strip().lower()
-        lookup = {
-            "debug": 10,
-            "info": 20,
-            "warn": 30,
-            "warning": 30,
-            "error": 40,
-            "fatal": 50,
-        }
-        if cleaned in lookup:
-            return lookup[cleaned]
-        if cleaned.isdigit():
-            return int(cleaned)
-        raise ValueError(f"Unsupported log level string '{value}'")
-    raise TypeError(f"Unsupported log level type: {type(value)!r}")
-
-
-try:
-    _LOG_LEVEL_ERROR = _coerce_ros_log_level(getattr(RosoutLog, "ERROR"))
-except Exception:  # noqa: BLE001
-    _LOG_LEVEL_ERROR = 40
+from gazebo_test.utils.watchdog_monitor import ExperimentWatchdog
 
 from ament_index_python.packages import get_package_share_directory
 from rclpy.parameter import Parameter
+
+from gazebo_test.utils.checkpoint_store import (
+    ExperimentJobCoordinator,
+    ExperimentJobHandle,
+)
 
 
 class ExperimentManager(Node):
@@ -132,15 +94,14 @@ class ExperimentManager(Node):
 
         if not checkpoint_dsn and env_checkpoint_dsn:
             checkpoint_dsn = env_checkpoint_dsn.strip()
-        if not checkpoint_dsn:
-            raise ValueError(
-                "A PostgreSQL DSN must be provided via 'checkpoint_dsn' parameter or 'GAZEBO_TEST_CHECKPOINT_DSN' environment variable"
-            )
         self.checkpoint_dsn = checkpoint_dsn
 
-        self._checkpoint_namespace = self._derive_checkpoint_namespace(
-            self.checkpoint_dsn
-        )
+        if self.checkpoint_dsn:
+            self._checkpoint_namespace = self._derive_checkpoint_namespace(
+                self.checkpoint_dsn
+            )
+        else:
+            self._checkpoint_namespace = "no_checkpoint"
         self.base_path = (
             self._base_path_root
             / self._checkpoint_namespace
@@ -151,6 +112,35 @@ class ExperimentManager(Node):
         self.get_logger().info(
             f"Results base path set to: {self.base_path} (checkpoint namespace: {self._checkpoint_namespace})"
         )
+
+        self.experiment_outcomes_path = Path(
+            f"{self.base_path.resolve()}/{self.algorithm_name}_outcomes.csv"
+        )
+        self._outcomes_lock_path = Path(f"{self.experiment_outcomes_path}.lock")
+
+        checkpoint_connect_timeout_param = self.declare_parameter(
+            "checkpoint_connect_timeout",
+            5.0,
+        ).value
+        if checkpoint_connect_timeout_param is None:
+            checkpoint_connect_timeout = 5.0
+        else:
+            checkpoint_connect_timeout = float(checkpoint_connect_timeout_param)
+
+        self.resume_checkpoint = bool(
+            self.declare_parameter("resume_checkpoint", Parameter.Type.BOOL).value
+        )
+        self.auto_recover_running = bool(
+            self.declare_parameter(
+                "auto_recover_running",
+                Parameter.Type.BOOL,
+            ).value
+        )
+        if not self.checkpoint_dsn and self.auto_recover_running:
+            self.get_logger().warning(
+                "Ignoring 'auto_recover_running' because checkpoint store is disabled"
+            )
+            self.auto_recover_running = False
 
         heartbeat_interval_param = self.declare_parameter(
             "job_heartbeat_interval_sec",
@@ -174,6 +164,35 @@ class ExperimentManager(Node):
             heartbeat_timeout, self._job_heartbeat_interval * 1.5
         )
 
+        worker_id_param = self.declare_parameter(
+            "worker_id",
+            Parameter.Type.STRING,
+        ).value
+        if worker_id_param:
+            self.worker_id = str(worker_id_param)
+        else:
+            hostname = socket.gethostname()
+            pid = os.getpid()
+            suffix = uuid.uuid4().hex[:8]
+            self.worker_id = f"{hostname}-{pid}-{suffix}"
+        self.get_logger().info(f"Worker id set to: {self.worker_id}")
+
+        self._job_coordinator = ExperimentJobCoordinator(
+            node=self,
+            algorithm_name=self.algorithm_name,
+            experiment_identifier=self._experiment_identifier,
+            worker_id=self.worker_id,
+            checkpoint_dsn=self.checkpoint_dsn or None,
+            checkpoint_connect_timeout_sec=checkpoint_connect_timeout,
+            heartbeat_interval_sec=self._job_heartbeat_interval,
+            heartbeat_timeout_sec=self._job_heartbeat_timeout,
+            resume_checkpoint=self.resume_checkpoint,
+            auto_recover_running=self.auto_recover_running,
+            completed_runs_loader=self._load_completed_runs_from_outcomes,
+            on_active_job_interrupted=self._handle_active_job_interrupted,
+        )
+        self._current_job_handle: Optional[ExperimentJobHandle] = None
+
         required_nodes_param = self.declare_parameter(
             "watchdog_required_nodes",
             [
@@ -196,7 +215,6 @@ class ExperimentManager(Node):
             )
         else:
             required_nodes = []
-        self._watchdog_required_nodes: List[str] = required_nodes
 
         module_grace_param = self.declare_parameter(
             "watchdog_startup_grace_sec",
@@ -206,21 +224,10 @@ class ExperimentManager(Node):
             module_grace = 20.0
         else:
             module_grace = float(module_grace_param)
-        self._module_health_grace_sec = max(module_grace, 0.0)
-        self._module_health_event: Optional[asyncio.Event] = None
-        self._module_failure_active = False
-        self._missing_modules: Set[str] = set()
-        self._last_reported_missing_nodes: Set[str] = set()
-        self._waiting_for_modules_logged = False
-        self._watchdog_monitor_started_at = 0.0
-
         raw_error_patterns = self.declare_parameter(
             "watchdog_error_patterns",
             ["/hunav_plugin|Service /compute_agents timeout"],
         ).value
-        self._watchdog_error_patterns = self._parse_watchdog_error_patterns(
-            raw_error_patterns
-        )
         threshold_param = self.declare_parameter(
             "watchdog_error_threshold",
             3,
@@ -231,80 +238,22 @@ class ExperimentManager(Node):
         ).value
         min_level_param = self.declare_parameter(
             "watchdog_error_min_level",
-            _LOG_LEVEL_ERROR,
+            Parameter.Type.INTEGER,
         ).value
-        self._watchdog_error_threshold = max(
-            1, int(threshold_param) if threshold_param is not None else 1
+        error_threshold = int(threshold_param) if threshold_param is not None else 3
+        error_window = float(window_param) if window_param is not None else 5.0
+        self.watchdog = ExperimentWatchdog(
+            node=self,
+            required_nodes=required_nodes,
+            startup_grace_sec=max(module_grace, 0.0),
+            raw_error_patterns=raw_error_patterns,
+            error_threshold=error_threshold,
+            error_window_sec=error_window,
+            error_min_level=min_level_param,
+            on_missing_nodes=self._handle_watchdog_missing_nodes,
         )
-        self._watchdog_error_window_sec = max(
-            0.5, float(window_param) if window_param is not None else 5.0
-        )
-        if min_level_param is None:
-            self._watchdog_error_min_level = _LOG_LEVEL_ERROR
-        else:
-            try:
-                self._watchdog_error_min_level = _coerce_ros_log_level(min_level_param)
-            except Exception as exc:  # noqa: BLE001
-                self.get_logger().warning(
-                    f"Invalid watchdog_error_min_level value '{min_level_param}': {exc}; using default"
-                )
-                self._watchdog_error_min_level = _LOG_LEVEL_ERROR
-        self._log_pattern_windows: Dict[str, Deque[float]] = defaultdict(deque)
-        self._active_log_faults: Set[str] = set()
-        self._rosout_subscription = None
-        if self._watchdog_error_patterns:
-            qos_profile = QoSProfile(depth=100)
-            self._rosout_subscription = self.create_subscription(
-                RosoutLog,
-                "/rosout",
-                self._rosout_callback,
-                qos_profile=qos_profile,
-            )
-            self.get_logger().info(
-                "Log watchdog active for patterns: "
-                + ", ".join(
-                    f"{node or '*'}|{pattern}"
-                    for _, node, pattern in self._watchdog_error_patterns
-                )
-            )
 
-        self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._watchdog_task: Optional[asyncio.Task[None]] = None
-        self._heartbeat_lost = False
-
-        checkpoint_connect_timeout_param = self.declare_parameter(
-            "checkpoint_connect_timeout",
-            5.0,
-        ).value
-        if checkpoint_connect_timeout_param is None:
-            checkpoint_connect_timeout = 5.0
-        else:
-            checkpoint_connect_timeout = float(checkpoint_connect_timeout_param)
-
-        self.get_logger().info(
-            "Checkpoint database DSN configured for experiment checkpoints"
-        )
-        self.resume_checkpoint = bool(
-            self.declare_parameter("resume_checkpoint", Parameter.Type.BOOL).value
-        )
-        self.auto_recover_running = bool(
-            self.declare_parameter(
-                "auto_recover_running",
-                Parameter.Type.BOOL,
-            ).value
-        )
-        worker_id_param = self.declare_parameter(
-            "worker_id",
-            Parameter.Type.STRING,
-        ).value
-        if worker_id_param:
-            self.worker_id = str(worker_id_param)
-        else:
-            hostname = socket.gethostname()
-            pid = os.getpid()
-            suffix = uuid.uuid4().hex[:8]
-            self.worker_id = f"{hostname}-{pid}-{suffix}"
-        self.get_logger().info(f"Worker id set to: {self.worker_id}")
 
         self.gazebo_env_handler = GazeboEnvironmentHandler(self)
         self.evaluation_handler = ExperimentEvaluator(
@@ -333,11 +282,6 @@ class ExperimentManager(Node):
         self.initial_state_entities: Dict[str, EntityState] = {}
         self.goal_entities: Dict[str, EntityState] = {}
 
-        self.experiment_outcomes_path = Path(
-            f"{self.base_path.resolve()}/{self.algorithm_name}_outcomes.csv"
-        )
-        self._outcomes_lock_path = Path(f"{self.experiment_outcomes_path}.lock")
-
         entity_dictionary = parse_entity_state_yaml(Path(yaml_path))
         self.initial_state_entities = entity_dictionary["initial_state_entities"]
         self.goal_entities = entity_dictionary["goal_entities"]
@@ -349,40 +293,12 @@ class ExperimentManager(Node):
             .open("r")
             .read()
         )
-        self.checkpoint_store = ExperimentCheckpointStore(
-            self.checkpoint_dsn,
-            connect_timeout_sec=checkpoint_connect_timeout,
+        self._job_coordinator.configure_jobs(
+            experiment_tags=self.initial_state_entities.keys(),
+            repetitions=self.repetitions,
         )
-        if self.auto_recover_running:
-            recovered = self.checkpoint_store.recover_stale_jobs(
-                worker_hint=self.worker_id
-            )
-            if recovered:
-                self.get_logger().warning(
-                    f"Recovered {recovered} previously running job(s)"
-                )
-        job_descriptors: List[ExperimentJobDescriptor] = []
-        for experiment_tag in self.initial_state_entities.keys():
-            for run_id in range(1, self.repetitions + 1):
-                job_descriptors.append(
-                    ExperimentJobDescriptor(
-                        algorithm=self.algorithm_name,
-                        experiment_identifier=self._experiment_identifier,
-                        experiment_tag=experiment_tag,
-                        run_id=run_id,
-                    )
-                )
-        self.checkpoint_store.register_jobs(job_descriptors)
-        if not self.resume_checkpoint:
-            reset_count = self.checkpoint_store.reset_jobs(
-                algorithm=self.algorithm_name,
-                experiment_identifier=self._experiment_identifier,
-            )
-            self.get_logger().info(
-                f"Reset {reset_count} job(s) to PENDING for a fresh run"
-            )
-        self._active_job_id: Optional[int] = None
-        atexit.register(self._cleanup_active_job)
+
+        atexit.register(self._job_coordinator.cleanup_on_exit)
         self.end = False
         self.get_logger().info("ExperimentManager initialized")
         # set log level to debug
@@ -396,6 +312,9 @@ class ExperimentManager(Node):
                 self._asyncio_loop = asyncio.get_running_loop()
             except RuntimeError:
                 self._asyncio_loop = None
+        # Set the asyncio loop for the job coordinator and watchdog
+        self._job_coordinator.set_asyncio_loop(self._asyncio_loop)
+        self.watchdog.set_asyncio_loop(self._asyncio_loop)
         # Initialize the experiment manager
         await self.gazebo_env_handler.wait_for_gazebo_ready()
         self.get_logger().debug("All entities are in the world")
@@ -414,131 +333,43 @@ class ExperimentManager(Node):
         This method will run the experiments for each experiment_tag defined in the YAML file.
         """
         self.get_logger().debug("Running experiments ...")
-        if self._module_health_event is None:
-            self._module_health_event = asyncio.Event()
-            self._module_health_event.set()
-        self._watchdog_monitor_started_at = time.monotonic()
+        self.watchdog.start_monitoring()
         if self._watchdog_task is None or self._watchdog_task.done():
             self._watchdog_task = asyncio.create_task(self._stale_job_watchdog())
-        requeue_failed = getattr(self.checkpoint_store, "requeue_failed_jobs", None)
-        if callable(requeue_failed):
-            try:
-                recovered_failed = requeue_failed(
-                    algorithm=self.algorithm_name,
-                    experiment_identifier=self._experiment_identifier,
-                )
-                if recovered_failed:
-                    self.get_logger().warning(
-                        f"Requeued {recovered_failed} FAILED job(s) for retry"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self.get_logger().error(
-                    f"Unable to requeue FAILED jobs before dispatch: {exc}"
-                )
+        self._job_coordinator.resubmit_failed_jobs()
         try:
             while True:
-                if (
-                    self._module_health_event is not None
-                    and not self._module_health_event.is_set()
-                ):
-                    if not self._waiting_for_modules_logged:
+                health_event = self.watchdog.health_event
+                if not health_event.is_set():
+                    if not self.watchdog.waiting_logged:
                         self.get_logger().warning(
                             "Waiting for required modules to come online before claiming next job"
                         )
-                        self._waiting_for_modules_logged = True
-                    await self._module_health_event.wait()
-                    self._waiting_for_modules_logged = False
-                try:
-                    requeued = self.checkpoint_store.requeue_stale_jobs(  # type: ignore[attr-defined]
-                        algorithm=self.algorithm_name,
-                        experiment_identifier=self._experiment_identifier,
-                        heartbeat_timeout_sec=self._job_heartbeat_timeout,
-                    )
-                    if requeued:
-                        self.get_logger().warning(
-                            f"Requeued {requeued} stale RUNNING job(s) lacking heartbeats"
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    self.get_logger().error(f"Failed to refresh stale jobs: {exc}")
-                job = self.checkpoint_store.claim_next_job(
-                    algorithm=self.algorithm_name,
-                    experiment_identifier=self._experiment_identifier,
-                    worker_id=self.worker_id,
-                )
-                if job is None:
+                        self.watchdog.set_waiting_logged(True)
+                    await health_event.wait()
+                    self.watchdog.set_waiting_logged(False)
+                # Check for available jobs and claim the next one
+                self._job_coordinator.prepare_for_dispatch()
+                job_handle = self._job_coordinator.claim_next_job()
+                if job_handle is None:
                     break
-                experiment_tag = job.experiment_tag
-                run_id = job.run_id
-                self.get_logger().info(
-                    f"Worker {self.worker_id} starting {experiment_tag} run {run_id}"
-                )
-                self._active_job_id = job.id
-                self._start_job_heartbeat(job.id)
                 try:
-                    if not self.experiment_outcomes_path.exists():
-                        self.experiment_outcomes_path.parent.mkdir(
-                            parents=True, exist_ok=True
-                        )
-                    result = await self.run_experiment(experiment_tag, run_id)
-                    if self._heartbeat_lost:
-                        self.get_logger().warning(
-                            f"Lost heartbeat for job {job.id}; skipping result storage so another worker can retry"
-                        )
-                        continue
-                    self.get_logger().info(
-                        f"Run {run_id} for {experiment_tag} completed with result: {result}"
-                    )
-                    experiment_outcome = pd.DataFrame(
-                        {
-                            "experiment_tag": [experiment_tag],
-                            "run_id": [run_id],
-                            "result": [result],
-                        }
-                    )
-                    if self.use_evaluator:
-                        hunav_results = self.hunav_evaluator_handler.get_result_df()
-                        experiment_outcome = pd.merge(
-                            experiment_outcome,
-                            hunav_results,
-                            on=["experiment_tag", "run_id"],
-                            how="left",
-                        )
-                    with self._acquire_outcomes_lock():
-                        file_exists = self.experiment_outcomes_path.exists()
-                        experiment_outcome.to_csv(
-                            self.experiment_outcomes_path,
-                            mode="a",
-                            header=not file_exists,
-                            index=False,
-                        )
-                        # sort the outcomes file by experiment_tag and run_id
-                        df = pd.read_csv(self.experiment_outcomes_path)
-                        df = df.sort_values(by=["experiment_tag", "run_id"])
-                        df.to_csv(
-                            self.experiment_outcomes_path,
-                            mode="w",
-                            header=True,
-                            index=False,
-                        )
-                    self.checkpoint_store.mark_job_done(job.id, str(result))
-                except Exception as exc:  # noqa: BLE001
-                    error_message = (
-                        f"Experiment {experiment_tag} run {run_id} failed: {exc}"
-                    )
-                    self.get_logger().error(error_message)
-                    self.get_logger().debug(traceback.format_exc())
-                    if not self._heartbeat_lost:
-                        self.checkpoint_store.mark_job_failed(job.id, error_message)
-                    else:
-                        self.get_logger().warning(
-                            "Skipping failure mark because job ownership was lost"
-                        )
+                    _ = self._job_coordinator.start_job(job_handle)
+                    self._current_job_handle = job_handle
+                    success = await self._execute_job(job_handle)
+                    if not success and not self._job_coordinator.heartbeat_lost:
+                        self._job_coordinator.handle_unsuccessful_job(job_handle)
+                except Exception:
+                    if not self._job_coordinator.heartbeat_lost:
+                        self._job_coordinator.handle_unsuccessful_job(job_handle)
                     raise
                 finally:
-                    await self._stop_job_heartbeat()
-                    self._active_job_id = None
+                    await self._job_coordinator.finalize_job(job_handle)
+                    self._current_job_handle = None
         finally:
             await self._stop_watchdog_task()
+            await self.watchdog.stop()
+            await self._job_coordinator.shutdown()
         await self.navigator.shutdown_navigation()
         self.get_logger().info("All experiments completed")
         # Save the experiment outcomes to a CSV file
@@ -546,6 +377,80 @@ class ExperimentManager(Node):
             f"Experiment outcomes saved to {self.experiment_outcomes_path}"
         )
         self.end = True
+
+    async def _execute_job(self, handle: ExperimentJobHandle) -> bool:
+        """Execute a single experiment job.
+        Args:
+            handle (ExperimentJobHandle): The job handle to execute.
+        Returns:
+            bool: True if the job was successful, False otherwise.
+        """
+        experiment_tag = handle.experiment_tag
+        run_id = handle.run_id
+
+        try:
+            if not self.experiment_outcomes_path.exists():
+                self.experiment_outcomes_path.parent.mkdir(parents=True, exist_ok=True)
+            result = await self.run_experiment(experiment_tag, run_id)
+            if self._job_coordinator.heartbeat_lost:
+                if handle.job_id is not None:
+                    self.get_logger().warning(
+                        f"Lost heartbeat for job {handle.job_id}; skipping result storage so another worker can retry"
+                    )
+                else:
+                    self.get_logger().warning(
+                        f"Lost heartbeat while running {experiment_tag} run {run_id}; will retry locally"
+                    )
+                self._job_coordinator.handle_lost_heartbeat(handle)
+                return False
+            self.get_logger().info(
+                f"Run {run_id} for {experiment_tag} completed with result: {result}"
+            )
+            experiment_outcome = pd.DataFrame(
+                {
+                    "experiment_tag": [experiment_tag],
+                    "run_id": [run_id],
+                    "result": [result],
+                }
+            )
+            if self.use_evaluator:
+                hunav_results = self.hunav_evaluator_handler.get_result_df()
+                experiment_outcome = pd.merge(
+                    experiment_outcome,
+                    hunav_results,
+                    on=["experiment_tag", "run_id"],
+                    how="left",
+                )
+            with self._acquire_outcomes_lock():
+                file_exists = self.experiment_outcomes_path.exists()
+                experiment_outcome.to_csv(
+                    self.experiment_outcomes_path,
+                    mode="a",
+                    header=not file_exists,
+                    index=False,
+                )
+                df = pd.read_csv(self.experiment_outcomes_path)
+                df = df.sort_values(by=["experiment_tag", "run_id"])
+                df.to_csv(
+                    self.experiment_outcomes_path,
+                    mode="w",
+                    header=True,
+                    index=False,
+                )
+            # Mark the job as complete
+            _ = self._job_coordinator.complete_job_success(handle, str(result))
+            return True
+        except Exception as exc:  # noqa: BLE001
+            error_message = f"Experiment {experiment_tag} run {run_id} failed: {exc}"
+            self.get_logger().error(error_message)
+            self.get_logger().debug(traceback.format_exc())
+            if not self._job_coordinator.heartbeat_lost:
+                _ = self._job_coordinator.complete_job_failure(handle, error_message)
+            else:
+                self.get_logger().warning(
+                    "Skipping failure mark because job ownership was lost"
+                )
+            raise
 
     async def run_experiment(
         self, experiment_tag: str = "episode_1", run_id: int = 1
@@ -627,64 +532,13 @@ class ExperimentManager(Node):
         await self.navigator.cancel_navigation()
         return experiment_result
 
-    def _start_job_heartbeat(self, job_id: int) -> None:
-        if self._heartbeat_task is not None and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-        self._heartbeat_lost = False
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(job_id))
-
-    async def _stop_job_heartbeat(self) -> None:
-        if self._heartbeat_task is None:
-            return
-        task = self._heartbeat_task
-        self._heartbeat_task = None
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    async def _heartbeat_loop(self, job_id: int) -> None:
-        try:
-            while True:
-                await asyncio.sleep(self._job_heartbeat_interval)
-                updated = self.checkpoint_store.refresh_job_heartbeat(  # type: ignore[attr-defined]
-                    job_id,
-                    self.worker_id,
-                )
-                if not updated:
-                    self._heartbeat_lost = True
-                    self.get_logger().warning(
-                        f"Heartbeat rejected for job {job_id}; job will be requeued"
-                    )
-                    return
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            self.get_logger().error(
-                f"Failed to refresh heartbeat for job {job_id}: {exc}"
-            )
-
     async def _stale_job_watchdog(self) -> None:
         try:
             while not self.end:
-                await asyncio.sleep(self._job_heartbeat_interval)
+                await asyncio.sleep(self._job_coordinator.heartbeat_interval)
+                await self._job_coordinator.on_watchdog_tick()
                 try:
-                    requeued = self.checkpoint_store.requeue_stale_jobs(  # type: ignore[attr-defined]
-                        algorithm=self.algorithm_name,
-                        experiment_identifier=self._experiment_identifier,
-                        heartbeat_timeout_sec=self._job_heartbeat_timeout,
-                    )
-                    if requeued:
-                        self.get_logger().warning(
-                            f"Watchdog requeued {requeued} stale RUNNING job(s)"
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    self.get_logger().error(
-                        f"Watchdog failed to requeue stale jobs: {exc}"
-                    )
-                try:
-                    await self._evaluate_module_health()
+                    await self.watchdog.evaluate_module_health()
                 except Exception as exc:  # noqa: BLE001
                     self.get_logger().error(
                         f"Watchdog failed module health check: {exc}"
@@ -692,244 +546,32 @@ class ExperimentManager(Node):
         except asyncio.CancelledError:
             raise
 
-    async def _evaluate_module_health(self) -> None:
-        if not self._watchdog_required_nodes:
-            if self._module_health_event and not self._module_health_event.is_set():
-                self._module_health_event.set()
-                self._waiting_for_modules_logged = False
-            return
-        present_nodes = self._collect_node_names()
-        missing = self._missing_required_nodes(present_nodes)
-        if missing:
-            self._missing_modules = missing
-            if not self._module_failure_active:
-                elapsed = 0.0
-                if self._watchdog_monitor_started_at > 0.0:
-                    elapsed = time.monotonic() - self._watchdog_monitor_started_at
-                if elapsed < self._module_health_grace_sec:
-                    return
-                await self._handle_missing_required_nodes(missing)
-            else:
-                if self._module_health_event and self._module_health_event.is_set():
-                    self._module_health_event.clear()
-                if missing != self._last_reported_missing_nodes:
-                    self._last_reported_missing_nodes = set(missing)
-                    self.get_logger().error(
-                        "Required modules still missing: " + ", ".join(sorted(missing))
-                    )
-            return
-        if self._module_failure_active:
-            self._module_failure_active = False
-            self._missing_modules.clear()
-            self._last_reported_missing_nodes = set()
-            if self._module_health_event and not self._module_health_event.is_set():
-                self.get_logger().info(
-                    "All required modules detected; resuming job dispatch"
-                )
-                self._module_health_event.set()
-            self._waiting_for_modules_logged = False
-            self._active_log_faults.clear()
-            for window in self._log_pattern_windows.values():
-                window.clear()
-            return
-        if self._module_health_event and not self._module_health_event.is_set():
-            self._module_health_event.set()
-            self._waiting_for_modules_logged = False
+    async def _handle_watchdog_missing_nodes(self, missing: Set[str]) -> None:
+        await self._job_coordinator.handle_watchdog_missing_nodes(missing)
 
-    async def _handle_missing_required_nodes(self, missing: Set[str]) -> None:
-        reason = ", ".join(sorted(missing))
-        self._module_failure_active = True
-        self._last_reported_missing_nodes = set(missing)
-        if self._module_health_event and self._module_health_event.is_set():
-            self._module_health_event.clear()
-        self._waiting_for_modules_logged = False
-        self.get_logger().error(
-            "Critical modules missing from ROS graph: "
-            + reason
-            + "; pausing job dispatch"
-        )
-        active_job = self._active_job_id
-        if active_job is not None:
-            try:
-                requeued = self.checkpoint_store.force_requeue_job(  # type: ignore[attr-defined]
-                    active_job,
-                    reason=f"Dependent modules unavailable: {reason}",
-                    expected_worker_id=self.worker_id,
-                )
-                if requeued:
-                    self.get_logger().warning(
-                        f"Requeued job {active_job} because required modules disappeared"
-                    )
-                else:
-                    self.get_logger().warning(
-                        f"Job {active_job} could not be requeued; it may have already been released"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self.get_logger().error(
-                    f"Failed to requeue job {active_job} after module loss: {exc}"
-                )
-            finally:
-                self._heartbeat_lost = True
-                await self._stop_job_heartbeat()
-                try:
-                    await self.navigator.cancel_navigation()
-                except Exception as exc:  # noqa: BLE001
-                    self.get_logger().warning(
-                        f"Failed to cancel navigation during module loss recovery: {exc}"
-                    )
-                try:
-                    if hasattr(self.evaluation_handler, "collision_event"):
-                        self.evaluation_handler.experiment_result = (
-                            ExperimentResult.FAILURE_NAVIGATION
-                        )
-                        self.evaluation_handler.collision_event.set()
-                except Exception as exc:  # noqa: BLE001
-                    self.get_logger().debug(
-                        f"Failed to notify evaluator after module loss: {exc}"
-                    )
-
-    def _collect_node_names(self) -> Set[str]:
-        nodes: Set[str] = set()
-        try:
-            discovered = self.get_node_names_and_namespaces()
-        except Exception as exc:  # noqa: BLE001
-            self.get_logger().debug(f"Failed to query node graph: {exc}")
-            return nodes
-        for name, namespace in discovered:
-            full_name = self._fully_qualified_name(namespace, name)
-            nodes.add(name)
-            nodes.add(full_name)
-            nodes.add(full_name.lstrip("/"))
-        return nodes
-
-    @staticmethod
-    def _fully_qualified_name(namespace: str, name: str) -> str:
-        if not namespace or namespace == "/":
-            return f"/{name}"
-        cleaned = namespace
-        if not cleaned.startswith("/"):
-            cleaned = f"/{cleaned}"
-        cleaned = cleaned.rstrip("/")
-        return f"{cleaned}/{name}"
-
-    def _missing_required_nodes(self, present: Set[str]) -> Set[str]:
-        missing: Set[str] = set()
-        for pattern in self._watchdog_required_nodes:
-            if not pattern:
-                continue
-            if not any(
-                self._node_pattern_matches(pattern, candidate) for candidate in present
-            ):
-                missing.add(pattern)
-        return missing
-
-    @staticmethod
-    def _node_pattern_matches(pattern: str, candidate: str) -> bool:
-        if fnmatch.fnmatch(candidate, pattern):
-            return True
-        if pattern.startswith("/") and fnmatch.fnmatch(candidate, pattern.lstrip("/")):
-            return True
-        if not pattern.startswith("/") and fnmatch.fnmatch(f"/{candidate}", pattern):
-            return True
-        return False
-
-    def _parse_watchdog_error_patterns(
-        self,
-        raw_patterns: Union[str, List[str], Tuple[str, ...], None],
-    ) -> List[Tuple[str, str, str]]:
-        patterns: List[Tuple[str, str, str]] = []
-        if raw_patterns is None:
-            return patterns
-        if isinstance(raw_patterns, str):
-            entries = [raw_patterns]
-        elif isinstance(raw_patterns, (list, tuple)):
-            entries = list(raw_patterns)
-        else:
-            return patterns
-        seen: Set[str] = set()
-        for entry in entries:
-            text = str(entry).strip()
-            if not text:
-                continue
-            if "|" in text:
-                node_filter, substring = text.split("|", 1)
-            else:
-                node_filter, substring = "", text
-            normalized_node = node_filter.strip()
-            normalized_pattern = substring.strip()
-            key = (
-                f"{normalized_node}|{normalized_pattern}"
-                if normalized_node
-                else normalized_pattern
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            patterns.append((key, normalized_node, normalized_pattern))
-        return patterns
-
-    def _rosout_callback(self, log_msg: RosoutLog) -> None:
-        if not self._watchdog_error_patterns:
-            return
-        if log_msg.level < self._watchdog_error_min_level:
-            return
-        node_name = log_msg.name or ""
-        message_text = log_msg.msg or ""
-        timestamp = float(log_msg.stamp.sec) + float(log_msg.stamp.nanosec) * 1e-9
-        lowered_message = message_text.lower()
-        for pattern_key, node_filter, substring in self._watchdog_error_patterns:
-            if node_filter and not self._node_pattern_matches(node_filter, node_name):
-                continue
-            if substring and substring.lower() not in lowered_message:
-                continue
-            self._handle_log_pattern_hit(
-                pattern_key,
-                timestamp,
-                node_name,
-                message_text,
-                substring,
-            )
-
-    def _handle_log_pattern_hit(
-        self,
-        pattern_key: str,
-        timestamp: float,
-        node_name: str,
-        message_text: str,
-        pattern_description: str,
+    async def _handle_active_job_interrupted(
+        self, handle: ExperimentJobHandle, reason: str
     ) -> None:
-        window = self._log_pattern_windows[pattern_key]
-        window.append(timestamp)
-        cutoff = timestamp - self._watchdog_error_window_sec
-        while window and window[0] < cutoff:
-            window.popleft()
-        if pattern_key in self._active_log_faults:
+        if self._current_job_handle is not None and handle != self._current_job_handle:
             return
-        if len(window) < self._watchdog_error_threshold:
-            return
-        display_pattern = pattern_description or pattern_key
-        reason = (
-            f"Log errors from '{node_name or 'unknown'}' matched '{display_pattern}'"
-            f" ({self._watchdog_error_threshold} hits in {self._watchdog_error_window_sec:.1f}s)"
+        self.get_logger().warning(
+            f"Job interruption detected for {handle.experiment_tag} run {handle.run_id}: {reason}"
         )
-        self.get_logger().error(
-            f"Watchdog detected repeated log errors from '{node_name or 'unknown'}': {message_text}"
-        )
-        self._active_log_faults.add(pattern_key)
-        window.clear()
-        if self._asyncio_loop is None:
-            self.get_logger().warning(
-                f"Asyncio loop unavailable to process watchdog fault for pattern '{pattern_key}'"
-            )
-            return
         try:
-            asyncio.run_coroutine_threadsafe(
-                self._handle_missing_required_nodes({reason}),
-                self._asyncio_loop,
+            await self.navigator.cancel_navigation()
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warning(
+                f"Failed to cancel navigation during watchdog recovery: {exc}"
             )
-        except RuntimeError as exc:
-            self.get_logger().error(
-                f"Failed to schedule watchdog recovery for pattern '{pattern_key}': {exc}"
+        try:
+            if hasattr(self.evaluation_handler, "collision_event"):
+                self.evaluation_handler.experiment_result = (
+                    ExperimentResult.FAILURE_NAVIGATION
+                )
+                self.evaluation_handler.collision_event.set()
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().debug(
+                f"Failed to notify evaluator after watchdog interruption: {exc}"
             )
 
     async def _stop_watchdog_task(self) -> None:
@@ -979,37 +621,22 @@ class ExperimentManager(Node):
             return f"{label}__{digest}"
         return f"checkpoint__{digest}"
 
-    def _cleanup_active_job(self) -> None:
-        if self._active_job_id is None:
-            return
+    def _load_completed_runs_from_outcomes(self) -> Set[Tuple[str, int]]:
+        if not self.experiment_outcomes_path.exists():
+            return set()
         try:
-            recovery_message = f"Worker {self.worker_id} terminated before finishing job {self._active_job_id}"
-            self.checkpoint_store.mark_job_failed(
-                self._active_job_id,
-                recovery_message,
+            df = pd.read_csv(self.experiment_outcomes_path)
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().warning(
+                f"Unable to read outcomes file for resume logic: {exc}"
             )
-        except Exception:  # noqa: BLE001
-            # Avoid raising during interpreter shutdown; logging may be unavailable.
-            pass
-        finally:
-            self._active_job_id = None
-
-    @property
-    def experiment_identifier(self) -> str:
-        return self._experiment_identifier
-
-    @property
-    def checkpoint_namespace(self) -> str:
-        return self._checkpoint_namespace
-
-    @staticmethod
-    def _looks_like_dsn(candidate: str) -> bool:
-        if not candidate:
-            return False
-        if "://" in candidate:
-            return True
-        if "=" in candidate:
-            return True
-        return candidate.lower().startswith(
-            "postgresql"
-        ) or candidate.lower().startswith("postgres")
+            return set()
+        if "experiment_tag" not in df.columns or "run_id" not in df.columns:
+            return set()
+        completed: Set[Tuple[str, int]] = set()
+        for _, row in df[["experiment_tag", "run_id"]].dropna().iterrows():
+            try:
+                completed.add((str(row["experiment_tag"]), int(row["run_id"])))
+            except Exception:  # noqa: BLE001
+                continue
+        return completed

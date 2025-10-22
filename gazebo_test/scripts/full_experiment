@@ -144,6 +144,11 @@ def main():
         default=os.environ.get("GAZEBO_TEST_CHECKPOINT_DSN", ""),
         help="PostgreSQL DSN for the shared checkpoint store.",
     )
+    run_parser.add_argument(
+        "--disable-checkpoint",
+        action="store_true",
+        help="Disable checkpoint/database usage even if a DSN is configured.",
+    )
 
     run_parser.add_argument(
         "--resume-checkpoint",
@@ -231,6 +236,17 @@ def run(args: argparse.Namespace):
     ) = parse_experiment_name(args.experiment)
 
     checkpoint_dsn_value = (args.checkpoint_dsn or "").strip()
+    checkpoint_enabled = bool(checkpoint_dsn_value)
+    if args.disable_checkpoint:
+        if checkpoint_enabled:
+            print("Checkpoint store disabled by request; ignoring provided DSN.")
+        checkpoint_dsn_value = ""
+        checkpoint_enabled = False
+
+    if checkpoint_enabled and ExperimentCheckpointStore is None:
+        raise RuntimeError(
+            "Checkpoint store support is unavailable because the 'psycopg' dependency is missing. Install it or rerun with --disable-checkpoint."
+        ) from _checkpoint_import_error
     selected_algorithm_name = (args.algorithm_name or "").strip()
     if not selected_algorithm_name:
         selected_algorithm_name = (args.navigator or "").strip()
@@ -238,7 +254,8 @@ def run(args: argparse.Namespace):
         selected_algorithm_name = "unknown"
     experiment_identifier = Path(goals_and_poses).stem
 
-    if checkpoint_dsn_value:
+    if checkpoint_enabled:
+        assert ExperimentCheckpointStore is not None
         try:
             checkpoint_store = ExperimentCheckpointStore(checkpoint_dsn_value)
             existing_jobs = checkpoint_store.list_jobs(  # type: ignore[attr-defined]
@@ -258,6 +275,13 @@ def run(args: argparse.Namespace):
             print(
                 f"Warning: unable to query checkpoint store ({exc}); proceeding with full launch."
             )
+            checkpoint_dsn_value = ""
+            checkpoint_enabled = False
+
+    if args.resume_checkpoint and not checkpoint_enabled:
+        print(
+            "--resume-checkpoint requested without an active checkpoint database; completed runs will be detected from previous outcomes files instead."
+        )
 
     ros_domain_id, gazebo_uri = isolate_experiment(args.ros_domain_id)
     # Create a new tmux server
@@ -411,9 +435,12 @@ def run(args: argparse.Namespace):
             else ""
         )
         checkpoint_arg = ""
-        if checkpoint_dsn_value:
+        if checkpoint_enabled and checkpoint_dsn_value:
             checkpoint_arg = f"checkpoint_dsn:={checkpoint_dsn_value}"
             print("Using PostgreSQL checkpoint store via provided DSN")
+        elif not checkpoint_enabled and checkpoint_dsn_value:
+            # Should not happen because disabled mode clears the DSN, but keep for safety.
+            checkpoint_dsn_value = ""
 
         resume_checkpoint = (
             f"resume_checkpoint:={str(args.resume_checkpoint).lower()}"
