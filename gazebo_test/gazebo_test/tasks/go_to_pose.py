@@ -91,6 +91,9 @@ class ExperimentManager(Node):
         ).value
         env_checkpoint_dsn = os.environ.get("GAZEBO_TEST_CHECKPOINT_DSN", "")
         checkpoint_dsn = str(checkpoint_dsn_param or "").strip()
+        if checkpoint_dsn and checkpoint_dsn.lower() in {"null", "none", "~"}:
+            # Treat YAML null-ish values as "not provided"
+            checkpoint_dsn = ""
 
         if not checkpoint_dsn and env_checkpoint_dsn:
             checkpoint_dsn = env_checkpoint_dsn.strip()
