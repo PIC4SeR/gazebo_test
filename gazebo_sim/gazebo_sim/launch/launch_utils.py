@@ -38,7 +38,7 @@ def map_to_odom_identity(use_sim_time: SomeSubstitutionsType) -> Node:
         name="map_to_odom",
         output="screen",
         parameters=[{"use_sim_time": use_sim_time}],
-        arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+        arguments=["--frame-id", "map", "--child-frame-id", "odom"],
     )
 
 
