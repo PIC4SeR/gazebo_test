@@ -32,7 +32,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: LaserScan
 Visualization Manager:
   Class: ""
   Displays:
@@ -59,9 +59,95 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        agent1:
+          Value: true
+        agent10:
+          Value: true
+        agent11:
+          Value: true
+        agent12:
+          Value: true
+        agent13:
+          Value: true
+        agent14:
+          Value: true
+        agent2:
+          Value: true
+        agent3:
+          Value: true
+        agent4:
+          Value: true
+        agent5:
+          Value: true
+        agent6:
+          Value: true
+        agent7:
+          Value: true
+        agent8:
+          Value: true
+        agent9:
+          Value: true
+        base_link:
+          Value: true
+        camera_bottom_screw_frame:
+          Value: true
+        camera_color_frame:
+          Value: true
+        camera_color_optical_frame:
+          Value: true
+        camera_depth_frame:
+          Value: true
+        camera_depth_optical_frame:
+          Value: true
+        camera_infra1_frame:
+          Value: true
+        camera_infra1_optical_frame:
+          Value: true
+        camera_infra2_frame:
+          Value: true
+        camera_infra2_optical_frame:
+          Value: true
+        camera_link:
+          Value: true
+        chassis_link:
+          Value: true
+        collision_link:
+          Value: true
+        front_camera_beam:
+          Value: true
+        front_camera_mount:
+          Value: true
+        front_fender_link:
+          Value: true
+        front_laser:
+          Value: true
+        front_laser_mount:
+          Value: true
+        front_left_wheel_link:
+          Value: true
+        front_mount:
+          Value: true
+        front_right_wheel_link:
+          Value: true
+        imu_link:
+          Value: true
+        jackal:
+          Value: true
         map:
           Value: true
+        mid_mount:
+          Value: true
+        navsat_link:
+          Value: true
         odom:
+          Value: true
+        rear_fender_link:
+          Value: true
+        rear_left_wheel_link:
+          Value: true
+        rear_mount:
+          Value: true
+        rear_right_wheel_link:
           Value: true
       Marker Scale: 1
       Name: TF
@@ -70,6 +156,80 @@ Visualization Manager:
       Show Names: false
       Tree:
         map:
+          agent1:
+            {}
+          agent10:
+            {}
+          agent11:
+            {}
+          agent12:
+            {}
+          agent13:
+            {}
+          agent14:
+            {}
+          agent2:
+            {}
+          agent3:
+            {}
+          agent4:
+            {}
+          agent5:
+            {}
+          agent6:
+            {}
+          agent7:
+            {}
+          agent8:
+            {}
+          agent9:
+            {}
+          base_link:
+            chassis_link:
+              collision_link:
+                {}
+              front_fender_link:
+                {}
+              imu_link:
+                {}
+              mid_mount:
+                front_mount:
+                  camera_bottom_screw_frame:
+                    camera_link:
+                      camera_color_frame:
+                        camera_color_optical_frame:
+                          {}
+                      camera_depth_frame:
+                        camera_depth_optical_frame:
+                          {}
+                      camera_infra1_frame:
+                        camera_infra1_optical_frame:
+                          {}
+                      camera_infra2_frame:
+                        camera_infra2_optical_frame:
+                          {}
+                  front_camera_mount:
+                    front_camera_beam:
+                      {}
+                  front_laser_mount:
+                    front_laser:
+                      {}
+                rear_mount:
+                  {}
+              navsat_link:
+                {}
+              rear_fender_link:
+                {}
+            front_left_wheel_link:
+              {}
+            front_right_wheel_link:
+              {}
+            rear_left_wheel_link:
+              {}
+            rear_right_wheel_link:
+              {}
+          jackal:
+            {}
           odom:
             {}
       Update Interval: 0
@@ -344,7 +504,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        "": true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -363,6 +523,18 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /forces
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        lookahead_points: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /lookahead_points
       Value: true
   Enabled: true
   Global Options:
@@ -419,11 +591,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 67.30607604980469
+      Scale: 44.43520736694336
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -0.04942616820335388
-      Y: 6.385483741760254
+      X: 4.500645637512207
+      Y: 4.105186462402344
     Saved: ~
 Window Geometry:
   Displays:

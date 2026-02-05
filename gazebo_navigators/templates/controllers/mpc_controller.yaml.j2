@@ -8,15 +8,32 @@
       {% else -%}
           {{ raise("MPC controller requires either 'enlarged_state', 'social_motion' or 'base' feature to be true.") }}
       {% endif %}
+      transform_tolerance: 0.5
+      max_robot_pose_search_dist: 6.0
+      max_linear_vel: 0.6
+      min_linear_vel: -0.2
+      max_angular_vel: 1.4
       trajectorizer:
-        omnidirectional: false
+        waypoint_dist_tol: 0.05
         desired_linear_vel: 0.6
-        lookahead_dist: 2.5
-        max_angular_vel: 1.4
-        transform_tolerance: 0.5
+        omnidirectional: false
+        lookahead_dist: 2.0
+        allow_reverse: false
+        reverse_heading_threshold: 2.56
+        max_reverse_speed: 0.2
         base_frame: "base_link"
-        time_step: 0.05
+        time_step: 0.10
         max_time: 2.0
+        motion_model_type: "unicycle"
+        max_angular_accel: 3.0
+        max_linear_accel: 2.5
+        min_approach_linear_velocity: 0.05
+        
+        rotate_to_heading_angular_vel: 0.4
+        rotate_to_heading_min_angle: 1.57
+        use_interpolation: true
+        use_rotate_to_heading: true
+        
       optimizer:
         linear_solver_type: "DENSE_SCHUR"
         param_tol: 1.0e-9
@@ -29,6 +46,13 @@
         debug_optimizer: false
         current_path_weight: 1.0
         current_cmds_weight: 0.5
+        goal_proximity_activation_radius: 0.75
+        goal_proximity_decay_distance: 0.25
+        agent_velocity_bound: 0.6
+        stationary_agent_velocity_bound: 0.01
+        use_adaptive_velocity_cost: true
+        adaptive_velocity_distance: 1.0
+        adaptive_velocity_min_scale: 0.2
         max_agents: 3
         critics:
           enable_social_work: {% if controller.social_work_cost is defined %}{{ controller.social_work_cost | lower }}{% else %}false{% endif %}
@@ -50,5 +74,6 @@
           proxemics_weight: 80.0
           velocity_feasibility_weight: 5.0
           goal_align_weight: 10.0
-          obstacle_weight: 0.13
+          obstacle_weight: 0.22
+          goal_proximity_weight: 5.0
 {% endblock -%}
