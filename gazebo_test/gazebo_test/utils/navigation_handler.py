@@ -2,9 +2,10 @@ from rclpy.node import Node
 from gazebo_test.utils.basic_navigator import BasicNavigator, TaskResult
 import rclpy
 from geometry_msgs.msg import PoseStamped, Pose
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 from rclpy.logging import LoggingSeverity
 import asyncio
+from contextlib import suppress
 
 
 class NavigationHandler:
@@ -23,6 +24,7 @@ class NavigationHandler:
         # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
         self.navigation_task = None
         self._default_navigation_result_callback = navigation_result_callback
+        self._lifecycle_lock = asyncio.Lock()
 
     async def initialize_navigation(self) -> None:
         """
@@ -60,16 +62,25 @@ class NavigationHandler:
         the result.
         """
         self.logger.debug("Resetting navigation stack ...")
-        # Cancel the navigation tasks if they are running
-        await self.cancel_navigation()
+        async with self._lifecycle_lock:
+            await self.cancel_navigation()
+            self.navigator.clearEvents()
 
-        # clear the navigator event
-        self.navigator.clearEvents()
-
-        # reset the navigation stack
-        await self.navigator.lifecycleReset()
-        await self.navigator.lifecycleStartup()
-        await self.navigator.waitUntilNav2Active()
+            reset_ok = await self._call_lifecycle_step(
+                "reset Nav2", self.navigator.lifecycleReset
+            )
+            if not reset_ok:
+                self.logger.warning(
+                    "Nav2 reset failed; attempting shutdown/startup cycle instead"
+                )
+                await self._call_lifecycle_step(
+                    "shutdown Nav2", self.navigator.lifecycleShutdown
+                )
+            await self._call_lifecycle_step(
+                "startup Nav2", self.navigator.lifecycleStartup
+            )
+            await self.navigator.waitUntilNav2Active()
+            await self._clear_costmaps_safe()
 
     def start_navigation_task(
         self,
@@ -129,12 +140,12 @@ class NavigationHandler:
         the result.
         """
         self.logger.debug("Shutting down navigation stack ...")
-        # clear all the navigation tasks
-        await self.cancel_navigation()
-
-        # clear the navigator event
-        self.navigator.clearEvents()
-        await self.navigator.lifecycleShutdown()
+        async with self._lifecycle_lock:
+            await self.cancel_navigation()
+            self.navigator.clearEvents()
+            await self._call_lifecycle_step(
+                "shutdown Nav2", self.navigator.lifecycleShutdown
+            )
 
     async def cancel_navigation(self) -> None:
         """
@@ -143,19 +154,21 @@ class NavigationHandler:
         """
         if self.navigation_task:
             self.logger.debug("Cancelling navigation task ...")
-            await self.navigator.cancelGoToPose()
+            try:
+                await self.navigator.cancelGoToPose()
+            except Exception as exc:  # noqa: BLE001
+                self.logger.debug(f"cancelGoToPose failed or already complete: {exc}")
             self.navigation_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self.navigation_task
-            except asyncio.CancelledError:
-                self.logger.debug("Navigation task cancelled")
-        if hasattr(self, "wait_for_events_task") and self.wait_for_events_task:
+            self.navigation_task = None
+
+        if task := getattr(self, "wait_for_events_task", None):
             self.logger.debug("Cancelling wait_for_events task ...")
-            await self.wait_for_events_task
-            try:
-                await self.wait_for_events_task
-            except asyncio.CancelledError:
-                self.logger.debug("Wait_for_events task cancelled")
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+            self.wait_for_events_task = None
 
     def resume_navigation(self) -> None:
         """
@@ -166,3 +179,22 @@ class NavigationHandler:
         the result.
         """
         pass
+
+    async def _call_lifecycle_step(
+        self, description: str, action: Callable[[], Awaitable[None]]
+    ) -> bool:
+        """Call a lifecycle action and log failures without stopping the loop."""
+        try:
+            await action()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(f"Failed to {description}: {exc}")
+            return False
+
+    async def _clear_costmaps_safe(self) -> None:
+        try:
+            await self.navigator.clearAllCostmaps()
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(
+                f"Unable to clear costmaps after Nav2 reset; continuing anyway: {exc}"
+            )
