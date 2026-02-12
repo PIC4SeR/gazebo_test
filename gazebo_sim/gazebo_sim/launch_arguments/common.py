@@ -30,6 +30,7 @@ class GazeboCommonArgs:
             "jackal",
             "turtlebot3",
             "turtlebot3_waffle",
+            "ghost_robot",
         ],
     )
     world_name: DeclareLaunchArgument = DeclareLaunchArgument(
@@ -64,4 +65,11 @@ class GazeboCommonArgs:
         name="goal_y",
         description="Y pose of the goal",
         default_value="0.0",
+    )
+
+    start_hunav: DeclareLaunchArgument = DeclareLaunchArgument(
+        name="start_hunav",
+        default_value="true",
+        choices=["true", "false", "True", "False"],
+        description="Whether to start the HuNav plugin at Gazebo launch or not.",
     )

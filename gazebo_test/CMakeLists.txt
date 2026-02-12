@@ -11,6 +11,11 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(hunav_sim QUIET)
 find_package(std_srvs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(gazebo_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 #display a warning if hunav_sim is not found
 
@@ -46,7 +51,18 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/experiment_manager
   scripts/full_experiment
+  scripts/environment_snapshot
   DESTINATION lib/${PROJECT_NAME}
+)
+
+ament_export_dependencies(
+  rclpy
+  std_srvs
+  cv_bridge
+  gazebo_msgs
+  geometry_msgs
+  sensor_msgs
+  std_msgs
 )
 
 ament_package(CONFIG_EXTRAS gazebo_test-extras.cmake.in)

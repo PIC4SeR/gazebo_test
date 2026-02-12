@@ -24,3 +24,9 @@ class RobotArgs:
         choices=["true", "false", "True", "False"],
         description="Whether to use GPU for LIDAR processing or not",
     )
+    spawn_robot: DeclareLaunchArgument = DeclareLaunchArgument(
+        "spawn_robot",
+        default_value="true",
+        choices=["true", "false", "True", "False"],
+        description="Whether to spawn the robot in Gazebo",
+    )

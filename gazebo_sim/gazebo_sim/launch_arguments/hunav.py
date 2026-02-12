@@ -28,17 +28,6 @@ class HunavArgs:
         description="Base world to be used. If empty, the world will be the one defined in the robot_description.",
     )
 
-    robot_name: DeclareLaunchArgument = DeclareLaunchArgument(
-        "robot_name",
-        default_value="jackal",
-        description="Specify the name of the robot Gazebo model.",
-        choices=[
-            "jackal",
-            "pmb2",
-            "turtlebot3",
-        ],
-    )
-
     update_rate: DeclareLaunchArgument = DeclareLaunchArgument(
         "update_rate",
         default_value="40.0",

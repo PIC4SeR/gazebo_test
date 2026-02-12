@@ -3,6 +3,8 @@ from launch.actions import (
     TimerAction,
     LogInfo,
     DeclareLaunchArgument,
+    SetLaunchConfiguration,
+    OpaqueFunction,
 )
 
 from launch import LaunchDescription
@@ -10,7 +12,10 @@ from launch_ros.actions import Node
 from launch.event_handlers import OnProcessStart
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
-from gazebo_sim.launch.launch_utils import path_to_file_in_pkg
+from gazebo_sim.launch.launch_utils import (
+    path_to_file_in_pkg,
+    parse_launch_config_value,
+)
 
 from dataclasses import dataclass
 from launch_pal.arg_utils import LaunchArgumentsBase
@@ -31,24 +36,23 @@ class LaunchArguments(LaunchArgumentsBase):
     base_world: DeclareLaunchArgument = HunavArgs.base_world
     use_gazebo_obs: DeclareLaunchArgument = HunavArgs.use_gazebo_obs
     update_rate: DeclareLaunchArgument = HunavArgs.update_rate
-    robot_name: DeclareLaunchArgument = HunavArgs.robot_name
+    robot_name: DeclareLaunchArgument = GazeboCommonArgs.robot_name
     global_frame_to_publish: DeclareLaunchArgument = HunavArgs.global_frame_to_publish
     ignore_models: DeclareLaunchArgument = HunavArgs.ignore_models
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
     use_collision: DeclareLaunchArgument = HunavArgs.use_collision
 
 
-def generate_launch_description():
+def _launch_hunav_world_generator(context, *args, **kwargs):
 
-    launch_arguments = LaunchArguments()
+    def _resolve_config(name: str):
+        return parse_launch_config_value(LaunchConfiguration(name).perform(context))
 
-    # World generation parameters
     agent_conf_file = path_to_file_in_pkg(
         pkg_name=LaunchConfiguration("config_pkg_name"),
         paths=["config", LaunchConfiguration("agents_configuration_file")],
-    )
+    ).perform(context)
 
-    # Read the yaml file and load the parameters
     hunav_loader_node = Node(
         package="hunav_agent_manager",
         executable="hunav_loader",
@@ -56,29 +60,24 @@ def generate_launch_description():
         parameters=[agent_conf_file],
     )
 
-    # world base file
     world_file = path_to_file_in_pkg(
         pkg_name=LaunchConfiguration("world_pkg_name"),
         paths=["worlds", LaunchConfiguration("base_world")],
-    )
-    # if desired to spawn goal model in Gazebo
+    ).perform(context)
 
-    # the node looks for the base_world file in the directory 'worlds'
-    # of the package hunav_gazebo_plugin direclty. So we do not need to
-    # indicate the path
     hunav_gazebo_worldgen_node = Node(
         package="hunav_gazebo_wrapper",
         executable="hunav_gazebo_world_generator",
         output="screen",
         parameters=[
             {"base_world": world_file},
-            {"use_gazebo_obs": LaunchConfiguration("use_gazebo_obs")},
-            {"update_rate": LaunchConfiguration("update_rate")},
-            {"robot_name": LaunchConfiguration("robot_name")},
-            {"global_frame_to_publish": LaunchConfiguration("global_frame_to_publish")},
-            {"use_navgoal_to_start": LaunchConfiguration("use_navgoal_to_start")},
-            {"ignore_models": LaunchConfiguration("ignore_models")},
-            {"use_collision": LaunchConfiguration("use_collision")},
+            {"use_gazebo_obs": _resolve_config("use_gazebo_obs")},
+            {"update_rate": _resolve_config("update_rate")},
+            {"robot_name": _resolve_config("robot_name")},
+            {"global_frame_to_publish": _resolve_config("global_frame_to_publish")},
+            {"use_navgoal_to_start": _resolve_config("use_navgoal_to_start")},
+            {"ignore_models": _resolve_config("ignore_models")},
+            {"use_collision": _resolve_config("use_collision")},
         ],
     )
 
@@ -97,7 +96,6 @@ def generate_launch_description():
         )
     )
 
-    # Execute a process after the world generation to print the end of the process
     ordered_launch_event_2 = RegisterEventHandler(
         OnProcessStart(
             target_action=hunav_gazebo_worldgen_node,
@@ -113,22 +111,27 @@ def generate_launch_description():
         )
     )
 
-    # hunav_manager node
     hunav_manager_node = Node(
         package="hunav_agent_manager",
         executable="hunav_agent_manager",
         name="hunav_agent_manager",
         output="screen",
-        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+        parameters=[{"use_sim_time": _resolve_config("use_sim_time")}],
     )
 
+    return [
+        hunav_loader_node,
+        ordered_launch_event,
+        hunav_manager_node,
+        ordered_launch_event_2,
+    ]
+
+
+def generate_launch_description():
+
+    launch_arguments = LaunchArguments()
     ld = LaunchDescription()
     launch_arguments.add_to_launch_description(ld)
-    # Generate the world with the agents
-    # launch hunav_loader and the WorldGenerator
-    # 2 seconds later
-    ld.add_action(hunav_loader_node)
-    ld.add_action(ordered_launch_event)
-    ld.add_action(hunav_manager_node)
-    ld.add_action(ordered_launch_event_2)
+
+    ld.add_action(OpaqueFunction(function=_launch_hunav_world_generator))
     return ld
