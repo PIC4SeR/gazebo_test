@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 import yaml
 import pandas as pd
 import os
@@ -37,7 +37,7 @@ def print_summary(log_path: Path):
     print("--------------------------------------------------")
 
 
-def parse_experiment_name(experiment_name: str):
+def parse_experiment_name(experiment_name: str) -> Dict:
     """
     Parse the experiment name and return the world, map, and goals_and_poses.
 
@@ -55,6 +55,7 @@ def parse_experiment_name(experiment_name: str):
     map = experiment["map"]
     goals_and_poses = experiment["goals_and_poses"]
     world_pkg_name = experiment["world_pkg_name"]
+    camera_config_file = experiment.get("camera_config_file", None)
 
     world_pkg_path = os.path.join(
         get_package_share_directory(world_pkg_name),
@@ -63,16 +64,15 @@ def parse_experiment_name(experiment_name: str):
     )
     agents_configuration_file = experiment["agents_configuration_file"]
     agents_pkg_name = experiment["config_pkg_name"]
+    agents_pkg_share = get_package_share_directory(agents_pkg_name)
     agents_pkg_path = os.path.join(
-        get_package_share_directory(agents_pkg_name),
+        agents_pkg_share,
         "config",
         agents_configuration_file,
     )
 
-    # check if there is a map_pkg name in the file
-    map_pkg_name = experiment_pkg_name
-    if "map_pkg_name" in experiment:
-        map_pkg_name = experiment["map_pkg_name"]
+    # check if there is a map_pkg name in the file, if not use the experiment package name
+    map_pkg_name = experiment.get("map_pkg_name", experiment_pkg_name)
 
     # check if the world, map, and goals_and_poses are absolute paths
     if not os.path.isabs(map):
@@ -98,17 +98,32 @@ def parse_experiment_name(experiment_name: str):
         raise FileNotFoundError(
             f"Agents configuration file {agents_pkg_path} does not exist."
         )
-    return (
-        world,
-        map,
-        goals_and_poses,
-        agents_configuration_file,
-        world_pkg_name,
-        agents_pkg_name,
-    )
+
+    camera_config_path = None
+    if camera_config_file:
+        camera_config_path = camera_config_file
+        if not os.path.isabs(camera_config_path):
+            camera_config_path = os.path.join(
+                get_package_share_directory(world_pkg_name),
+                "config",
+                camera_config_file,
+            )
+        if not os.path.exists(camera_config_path):
+            raise FileNotFoundError(
+                f"Camera configuration file {camera_config_path} does not exist."
+            )
+    return {
+        "world": world,
+        "map": map,
+        "goals_and_poses": goals_and_poses,
+        "agents_configuration_file": agents_configuration_file,
+        "world_pkg_name": world_pkg_name,
+        "agents_pkg_name": agents_pkg_name,
+        "camera_config_file": camera_config_path,
+    }
 
 
-def get_experiment_files() -> dict[str, str]:
+def get_experiment_files() -> Dict[str, str]:
     """
     Get the files associated with the experiment using the ament index
 

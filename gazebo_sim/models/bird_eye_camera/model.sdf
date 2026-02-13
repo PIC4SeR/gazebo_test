@@ -2,7 +2,7 @@
 <sdf version="1.7">
   <model name="bird_eye_camera">
     <static>true</static>
-    <pose>0 0 5 0 0 0</pose>
+    <pose>0 0 0 0 0 0</pose>
     <link name="bird_eye_camera_link">
       <inertial>
         <mass>0.1</mass>
@@ -57,7 +57,6 @@
           </ros>
           <frame_name>bird_eye_camera_link</frame_name>
           <update_rate>30</update_rate>
-          <triggered>true</triggered>
         </plugin>
       </sensor>
     </link>

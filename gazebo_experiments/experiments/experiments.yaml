@@ -19,6 +19,8 @@ social_nav:
     agents_envs/social_nav.yaml
   config_pkg_name:
     gazebo_sim
+  camera_config_file:
+    camera_configs/social_nav.yaml
 
 social_env_test:
   goals_and_poses:
@@ -33,6 +35,8 @@ social_env_test:
     agents_envs/social_env_test.yaml
   config_pkg_name:
     gazebo_sim
+  camera_config_file:
+    camera_configs/social_env_test.yaml
 
 social_nav_test:
   goals_and_poses:
@@ -47,3 +51,5 @@ social_nav_test:
     agents_envs/social_nav.yaml
   config_pkg_name:
     gazebo_sim
+  camera_config_file:
+    camera_configs/social_nav_test.yaml

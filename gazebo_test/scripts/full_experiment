@@ -226,14 +226,14 @@ def main():
 
 def run(args: argparse.Namespace):
     """Run the specified experiment."""
-    (
-        world,
-        map,
-        goals_and_poses,
-        agents_configuration_file,
-        world_pkg_name,
-        agents_pkg_name,
-    ) = parse_experiment_name(args.experiment)
+    experiment_dict = parse_experiment_name(args.experiment)
+
+    world = experiment_dict.get("world", "")
+    map = experiment_dict.get("map", "")
+    goals_and_poses = experiment_dict.get("goals_and_poses", "")
+    agents_configuration_file = experiment_dict.get("agents_configuration_file", "")
+    world_pkg_name = experiment_dict.get("world_pkg_name", "")
+    agents_pkg_name = experiment_dict.get("agents_pkg_name", "")
 
     checkpoint_dsn_value = (args.checkpoint_dsn or "").strip()
     checkpoint_enabled = bool(checkpoint_dsn_value)

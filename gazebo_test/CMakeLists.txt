@@ -51,7 +51,8 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/experiment_manager
   scripts/full_experiment
-  scripts/environment_snapshot
+  scripts/environment_camera
+  scripts/annotate_snapshot
   DESTINATION lib/${PROJECT_NAME}
 )
 
