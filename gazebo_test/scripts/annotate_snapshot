@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -444,6 +445,17 @@ def world_to_pixel(
     return int(round(u)), int(round(v))
 
 
+def _episode_number_from_name(name: str, fallback: int) -> str:
+    """Extract a numeric episode identifier from names like 'episode_5'."""
+    match = re.search(r"(\d+)(?!.*\d)", name)
+    if match:
+        try:
+            return str(int(match.group(1)))
+        except ValueError:
+            return match.group(1)
+    return str(fallback)
+
+
 def annotate_image(
     image: np.ndarray,
     intrinsics: CameraIntrinsics,
@@ -489,7 +501,7 @@ def annotate_image(
         if start_px is None and goal_px is None:
             continue
         color = episode_color(idx)
-        label = f"{idx:2d}"
+        label = _episode_number_from_name(str(episode), idx)
         if start_px is not None:
             length = 50  # pixels
             dx = length * math.cos(start[2]) if len(start) > 2 else length
@@ -518,14 +530,16 @@ def annotate_image(
                 )
             )
             ax.text(
-                goal_px[0] + 20,
-                goal_px[1] + 20,
+                goal_px[0],
+                goal_px[1],
                 label,
                 color="black",
                 fontweight="bold",
                 fontsize=max(
-                    20, min(20, fig_h * 2)
+                    18, min(18, fig_h * 2)
                 ),  # Scale font size with figure height
+                ha="center",
+                va="center",
             )
     if people_trajectories:
         print(f"Overlaying {len(people_trajectories)} people trajectories...")
