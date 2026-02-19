@@ -22,7 +22,12 @@ import numpy as np
 import yaml
 from matplotlib import colors as mcolors
 from matplotlib import patches
-from tf_transformations import quaternion_from_euler, quaternion_matrix
+from tf_transformations import (
+    quaternion_from_euler,
+    quaternion_matrix,
+    euler_matrix,
+    euler_from_matrix,
+)
 
 from gazebo_test.script_utils.parsing_utils import parse_experiment_name
 
@@ -207,12 +212,10 @@ def load_goals_and_poses(path: Path) -> Dict[str, Dict[str, Sequence[float]]]:
         episodes = inferred
     goals = data.get("goals", {})
     poses = data.get("poses", {})
-    camera_pose = data.get("camera_pose", {})
     return {
         "episodes": episodes,
         "goals": goals,
         "poses": poses,
-        "camera_pose": camera_pose,
     }
 
 
@@ -445,6 +448,18 @@ def world_to_pixel(
     return int(round(u)), int(round(v))
 
 
+def rotate_to_world_yaw(camera_pose: CameraPose, local_yaw: float) -> float:
+    """Convert a yaw angle from local frame to world frame using camera's yaw rotation."""
+    # compute the rotation from camera to world use quaternion math
+    local_rot = euler_matrix(0, 0, local_yaw)[:3, :3]
+    combined_rotation = camera_pose.rotation_camera_from_world @ local_rot
+    print(f"Combined rotation matrix:\n{combined_rotation}")
+    # extract the yaw angle from the combined rotation
+    _, _, world_yaw = euler_from_matrix(combined_rotation)
+    # get the yaw angle of the camera in the world frame
+    return world_yaw
+
+
 def _episode_number_from_name(name: str, fallback: int) -> str:
     """Extract a numeric episode identifier from names like 'episode_5'."""
     match = re.search(r"(\d+)(?!.*\d)", name)
@@ -497,6 +512,8 @@ def annotate_image(
         start_xyz = (float(start[0]), float(start[1]), ground_height)
         goal_xyz = (float(goal[0]), float(goal[1]), ground_height)
         start_px = world_to_pixel(pose, intrinsics, start_xyz)
+        start_yaw = rotate_to_world_yaw(pose, start[2] if len(start) > 2 else 0.0)
+
         goal_px = world_to_pixel(pose, intrinsics, goal_xyz)
         if start_px is None and goal_px is None:
             continue
@@ -504,8 +521,8 @@ def annotate_image(
         label = _episode_number_from_name(str(episode), idx)
         if start_px is not None:
             length = 50  # pixels
-            dx = length * math.cos(start[2]) if len(start) > 2 else length
-            dy = length * math.sin(start[2]) if len(start) > 2 else 0.0
+            dx = length * math.cos(start_yaw) if len(start) > 2 else length
+            dy = length * math.sin(start_yaw) if len(start) > 2 else 0.0
             print(f"  Start pixel: {start_px} | arrow delta: ({dx:.1f}, {dy:.1f})")
             print(f"  dx: {dx:.2f}, dy: {dy:.2f}")
             ax.add_patch(
@@ -624,15 +641,8 @@ def main() -> None:
         camera_pose_position, camera_pose_orientation = load_camera_config(
             camera_config_path.expanduser()
         )
-    elif dataset.get("camera_pose"):
-        camera_pose_position, camera_pose_orientation = resolve_camera_pose(
-            dataset["camera_pose"], dataset["episodes"]
-        )
     else:
-        raise ValueError(
-            "Unable to resolve camera pose. Provide --camera-config or define "
-            "camera_pose entries in the goals file."
-        )
+        raise ValueError("Unable to resolve camera pose. Provide --camera-config")
 
     requested_eps = args.episodes or dataset["episodes"]
     missing = [ep for ep in requested_eps if ep not in dataset["episodes"]]
