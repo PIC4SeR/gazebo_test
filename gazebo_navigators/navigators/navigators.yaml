@@ -296,6 +296,7 @@ MPC_social_motion:
       proxemics_cost: true
       path_follow_cost: true
       path_align_cost: true
+      crossing_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
