@@ -504,7 +504,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -536,6 +536,34 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /lookahead_points
       Value: true
+    - Arrow Head Diameter: 0.15000000596046448
+      Arrow Head Length: 0.11999999731779099
+      Arrow Length: 0.6000000238418579
+      Arrow Shaft Diameter: 0.07999999821186066
+      Class: People
+      Enabled: true
+      Heading Alpha: 1
+      Heading Color: 50; 180; 50
+      Name: People
+      Show Names:
+        Text Color: 255; 255; 255
+        Text Size: 0.30000001192092896
+        Text Z Offset: 0.800000011920929
+        Value: true
+      Show Velocity:
+        Value: true
+        Velocity Alpha: 0.800000011920929
+        Velocity Color: 230; 50; 50
+        Velocity Scale: 1
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /jackal/detected_people
+      Value: true
+      Z Offset: 0.10000000149011612
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -591,7 +619,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 44.43520736694336
+      Scale: 34.41062545776367
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
       X: 4.500645637512207
