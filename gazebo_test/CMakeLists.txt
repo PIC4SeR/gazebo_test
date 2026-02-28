@@ -16,6 +16,8 @@ find_package(gazebo_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(people_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 #display a warning if hunav_sim is not found
 
@@ -53,6 +55,7 @@ install(PROGRAMS
   scripts/full_experiment
   scripts/environment_camera
   scripts/annotate_snapshot
+  scripts/people_visualizer
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -64,6 +67,8 @@ ament_export_dependencies(
   geometry_msgs
   sensor_msgs
   std_msgs
+  people_msgs
+  visualization_msgs
 )
 
 ament_package(CONFIG_EXTRAS gazebo_test-extras.cmake.in)

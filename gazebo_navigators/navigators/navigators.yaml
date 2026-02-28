@@ -171,10 +171,10 @@ MPC_base:
       name: mpc
       base: true
       social_work_cost: true
-      social_angle_cost: true
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -186,10 +186,10 @@ MPC_base_no_costs:
       name: mpc
       base: true
       social_work_cost: false
-      social_angle_cost: false
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -201,10 +201,10 @@ MPC_base_no_angle_cost:
       name: mpc
       base: true
       social_work_cost: true
-      social_angle_cost: false
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -216,10 +216,10 @@ MPC_base_no_proxemics_cost:
       name: mpc
       base: true
       social_work_cost: true
-      social_angle_cost: true
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -231,10 +231,10 @@ MPC_base_no_work_cost:
       name: mpc
       base: true
       social_work_cost: false
-      social_angle_cost: true
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -246,10 +246,10 @@ MPC_base_only_work_cost:
       name: mpc
       base: true
       social_work_cost: true
-      social_angle_cost: false
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -261,10 +261,10 @@ MPC_base_only_angle_cost:
       name: mpc
       base: true
       social_work_cost: false
-      social_angle_cost: true
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -276,30 +276,26 @@ MPC_base_only_proxemics_cost:
       name: mpc
       base: true
       social_work_cost: false
-      social_angle_cost: false
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
 
-MPC_enlarged_state:
-  nav_template: 
-    name: only_controller
-    controller:
-      name: mpc
-      enlarged_state: true
-      costmap_layers:
-        - obstacle_layer
-        - inflation_layer
 
 MPC_social_motion:
   nav_template: 
     name: only_controller
     controller:
       name: mpc
-      social_motion: true
+      social_motion: true  
+      social_work_cost: true
+      angle_cost: true
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -311,10 +307,10 @@ MPC_enlarged_state:
       name: mpc
       enlarged_state: true
       social_work_cost: true
-      social_angle_cost: true
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -326,10 +322,10 @@ MPC_enlarged_state_no_angle_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: true
-      social_angle_cost: false
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -340,10 +336,10 @@ MPC_enlarged_state_no_proxemics_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: true
-      social_angle_cost: true
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -354,10 +350,10 @@ MPC_enlarged_state_no_work_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: false
-      social_angle_cost: true
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -368,10 +364,10 @@ MPC_enlarged_state_only_work_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: true
-      social_angle_cost: false
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -383,10 +379,10 @@ MPC_enlarged_state_only_angle_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: false
-      social_angle_cost: true
-      social_proxemics_cost: false
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: true
+      proxemics_cost: false
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
@@ -397,10 +393,10 @@ MPC_enlarged_state_only_proxemics_cost:
       name: mpc
       enlarged_state: true
       social_work_cost: false
-      social_angle_cost: false
-      social_proxemics_cost: true
-      social_path_follow_cost: true
-      social_path_align_cost: true
+      angle_cost: false
+      proxemics_cost: true
+      path_follow_cost: true
+      path_align_cost: true
       costmap_layers:
         - obstacle_layer
         - inflation_layer
