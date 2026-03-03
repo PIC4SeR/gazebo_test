@@ -189,6 +189,12 @@ def parse_args() -> argparse.Namespace:
             "--stage_label). Only used when resolving paths from --experiment."
         ),
     )
+
+    parser.add_argument(
+        "--print-labels",
+        action="store_true",
+        help="Whether to print episode labels next to the goal markers.",
+    )
     return parser.parse_args()
 
 
@@ -452,8 +458,7 @@ def rotate_to_world_yaw(camera_pose: CameraPose, local_yaw: float) -> float:
     """Convert a yaw angle from local frame to world frame using camera's yaw rotation."""
     # compute the rotation from camera to world use quaternion math
     local_rot = euler_matrix(0, 0, local_yaw)[:3, :3]
-    combined_rotation = camera_pose.rotation_camera_from_world @ local_rot
-    print(f"Combined rotation matrix:\n{combined_rotation}")
+    combined_rotation = local_rot @ camera_pose.rotation_camera_from_world
     # extract the yaw angle from the combined rotation
     _, _, world_yaw = euler_from_matrix(combined_rotation)
     # get the yaw angle of the camera in the world frame
@@ -482,6 +487,7 @@ def annotate_image(
     people_trajectories: Optional[List[RecordedTrajectory]] = None,
     people_line_width: float = 1.5,
     people_alpha: float = 0.85,
+    print_labels: bool = True,
 ) -> plt.Figure:
     height, width = image.shape[:2]
     dpi = 100
@@ -503,6 +509,27 @@ def annotate_image(
         color = palette(color_index / palette.N)
         return (float(color[0]), float(color[1]), float(color[2]))
 
+    if people_trajectories:
+        print(f"Overlaying {len(people_trajectories)} people trajectories...")
+        for idx, traj in enumerate(people_trajectories):
+            projected: List[Tuple[int, int]] = []
+            for x, y, z in traj.samples:
+                proj = world_to_pixel(pose, intrinsics, (x, y, z))
+                if proj is not None:
+                    projected.append(proj)
+            if len(projected) < 2:
+                continue
+            xs, ys = zip(*projected)
+
+            ax.plot(
+                xs,
+                ys,
+                color="black" if traj.color is None else traj.color,
+                linewidth=people_line_width,
+                alpha=people_alpha,
+                linestyle="--",
+            )
+
     for idx, episode in enumerate(episodes, start=1):
         start = start_poses.get(episode)
         print(f"Episode {episode}: start={start} | goal={goals.get(episode)}")
@@ -523,8 +550,6 @@ def annotate_image(
             length = 50  # pixels
             dx = length * math.cos(start_yaw) if len(start) > 2 else length
             dy = length * math.sin(start_yaw) if len(start) > 2 else 0.0
-            print(f"  Start pixel: {start_px} | arrow delta: ({dx:.1f}, {dy:.1f})")
-            print(f"  dx: {dx:.2f}, dy: {dy:.2f}")
             ax.add_patch(
                 patches.FancyArrowPatch(
                     (start_px[0], start_px[1]),
@@ -546,38 +571,19 @@ def annotate_image(
                     edgecolor="black",
                 )
             )
-            ax.text(
-                goal_px[0],
-                goal_px[1],
-                label,
-                color="black",
-                fontweight="bold",
-                fontsize=max(
-                    18, min(18, fig_h * 2)
-                ),  # Scale font size with figure height
-                ha="center",
-                va="center",
-            )
-    if people_trajectories:
-        print(f"Overlaying {len(people_trajectories)} people trajectories...")
-        for idx, traj in enumerate(people_trajectories):
-            projected: List[Tuple[int, int]] = []
-            for x, y, z in traj.samples:
-                proj = world_to_pixel(pose, intrinsics, (x, y, z))
-                if proj is not None:
-                    projected.append(proj)
-            if len(projected) < 2:
-                continue
-            xs, ys = zip(*projected)
-
-            ax.plot(
-                xs,
-                ys,
-                color="black" if traj.color is None else traj.color,
-                linewidth=people_line_width,
-                alpha=people_alpha,
-                linestyle="--",
-            )
+            if print_labels:
+                ax.text(
+                    goal_px[0],
+                    goal_px[1],
+                    label,
+                    color="black",
+                    fontweight="bold",
+                    fontsize=max(
+                        18, min(18, fig_h * 2)
+                    ),  # Scale font size with figure height
+                    ha="center",
+                    va="center",
+                )
     fig.tight_layout(pad=0)
     return fig
 
@@ -682,6 +688,7 @@ def main() -> None:
         people_trajectories=people_traj,
         people_line_width=args.people_width,
         people_alpha=args.people_alpha,
+        print_labels=args.print_labels,
     )
     if args.output is None:
 
