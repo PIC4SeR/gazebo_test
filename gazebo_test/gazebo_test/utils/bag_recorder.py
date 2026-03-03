@@ -68,10 +68,12 @@ class BagRecorder:
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
-        # extend the topic_dict with the maps_topic_dict
+        # build a local copy of topics to record (avoid mutating the module-level dict)
+        active_topics = dict(topic_dict)
         if record_maps:
-            topic_dict.update(maps_topic_dict)
-        for topic_name, msg_type in topic_dict.items():
+            active_topics.update(maps_topic_dict)
+        self._active_topics = active_topics
+        for topic_name, msg_type in active_topics.items():
             # Create a TopicMetadata object for each topic
             self.topics_metadata.append(
                 rosbag2_py.TopicMetadata(
@@ -118,6 +120,8 @@ class BagRecorder:
             shutil.rmtree(self.bag_path)
         self.logger.debug(f"Bag path: {self.bag_path}")
 
+        # Create a fresh writer for each recording session
+        self.writer = rosbag2_py.SequentialWriter()
         storage_options = rosbag2_py.StorageOptions(
             uri=str(self.bag_path), storage_id="sqlite3"
         )
@@ -151,7 +155,7 @@ class BagRecorder:
         """
         # Check if recording is in progress
         # and if the topic is in the topic_dict
-        if topic_name not in topic_dict:
+        if topic_name not in self._active_topics:
             self.logger.warn(f"Topic {topic_name} is not in the topic_dict.")
             return
         if not self.recording:

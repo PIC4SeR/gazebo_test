@@ -12,6 +12,7 @@ from enum import Enum
 import rclpy
 from rclpy.time import Time
 import asyncio
+import threading
 from gazebo_collision_msgs.msg import Collision
 from rclpy.logging import LoggingSeverity
 
@@ -44,6 +45,7 @@ class ExperimentEvaluator:
     def __init__(self, node: Node, timeout_duration: float = 40.0):
         self.timeout_duration = timeout_duration
         self.start_time = None
+        self._start_time_lock = threading.Lock()
         self.node = node
         self._loop = None
 
@@ -89,7 +91,8 @@ class ExperimentEvaluator:
         self.navigation_result_event.clear()
         self.timeout_event.clear()
 
-        self.start_time = self.get_clock().now()
+        with self._start_time_lock:
+            self.start_time = self.get_clock().now()
         self.experiment_result = ExperimentResult.RESULT_NOT_SET
         self.logger.debug("Experiment started")
         self.logger.debug(f"Timeout set to {self.timeout_duration} seconds", once=True)
@@ -99,9 +102,9 @@ class ExperimentEvaluator:
         # Wait for one of: collision_event, navigation_result_event, or timeout
         done, pending = await asyncio.wait(
             [
-                self.collision_event.wait(),
-                self.navigation_result_event.wait(),
-                self.timeout_event.wait(),
+                asyncio.ensure_future(self.collision_event.wait()),
+                asyncio.ensure_future(self.navigation_result_event.wait()),
+                asyncio.ensure_future(self.timeout_event.wait()),
             ],
             return_when=asyncio.FIRST_COMPLETED,
         )
@@ -133,13 +136,15 @@ class ExperimentEvaluator:
             msg (Collision): The collision message from the collision sensor.
         """
         # assure that the message is arrived after the start time
-        if not self.start_time:
+        with self._start_time_lock:
+            current_start_time = self.start_time
+        if not current_start_time:
             self.logger.info("Collision message arrived before start time")
             return
         self.logger.info(
-            f"Collision message arrived at: {Time.from_msg(msg.header.stamp) - self.start_time}"
+            f"Collision message arrived at: {Time.from_msg(msg.header.stamp) - current_start_time}"
         )
-        if Time.from_msg(msg.header.stamp) <= self.start_time:
+        if Time.from_msg(msg.header.stamp) <= current_start_time:
             self.logger.info("Collision message arrived before start time")
             return
 
@@ -163,8 +168,8 @@ class ExperimentEvaluator:
     def _create_timeout_timer(self):
         """Create a timer to check for timeout."""
         if self.timeout_timer:
-            self.timeout_timer.reset()
-            return
+            self.timeout_timer.cancel()
+            self.node.destroy_timer(self.timeout_timer)
         self.timeout_timer = self.node.create_timer(
             self.timeout_duration,
             self._on_timeout,

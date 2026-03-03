@@ -73,34 +73,6 @@
           enable_crossing: {% if controller.crossing_cost is defined %}{{ controller.crossing_cost | lower }}{% else %}false{% endif %}
         
         weights:
-          
-          # === NAVIGATION (must dominate for the robot to move) ===
-          #distance_weight: 9.0          # Path tracking — squared dist, moderate raw value
-          #angle_weight: 1.5             # Per-waypoint heading — keep LOW to allow avoidance
-
-          # === GOAL REACHING ===
-          #goal_align_weight: 8.0        # Heading toward goal — squared angle, similar scale to distance
-          #goal_proximity_weight: 5.0   # Log potential: log(1+d/ε), raw ≈ 1.6 at 1m, 0.7 at 0.25m
-
-          # === SPEED & SMOOTHNESS ===
-          #velocity_weight: 4.5          # Desired speed tracking — raw is small (≤0.36)
-          #velocity_feasibility_weight: 8.0  # Block-to-block smoothness — only 2 residuals total
-
-          # === SAFETY ===
-          #obstacle_weight: 0.1          # Costmap avoidance — raw 0–254, tiny weight needed
-
-          # === SOCIAL (start conservative, increase if needed) ===
-          #social_weight: 40.0           # SFM force — raw ≈ 0.01–0.1, needs large amplification
-          #proxemics_weight: 8.0         # Proximity to people — raw ≈ 0.3 at 1m
-          #agent_angle_weight: 5.0      # Don't point at people — raw ≈ 0.5–1.0
-          #velocity_alignment_weight: 8.0  # Don't follow people's heading — sub-weight of agent_angle
-          #crossing_weight: 20.0         # Speed penalty during crossing encounters
-          #crossing_bearing_weight: 5.0   # Sub-weight: penalise being in front of agent along their trajectory
-          # ═══════════════════════════════════════════════════════
-          # BALANCED WEIGHT RECOMMENDATIONS
-          # Target effective residual: ~5-15 for navigation, ~15-30 for social safety
-          # ═══════════════════════════════════════════════════════
-
           # NAVIGATION — baseline
           distance_weight: 12.5       # peak 1.0 → effective 10    (path tracking)
           angle_weight: 2.2           # peak 1.0 → effective 2     (heading to path)
@@ -133,5 +105,5 @@
           #agent_angle_weight: 12.0    # peak 1.7 → effective 20    (don't aim at agents)
           #velocity_alignment_weight: 5.0  # sub-weight INSIDE AgentAngleCost (multiplies the velocity component)
           #crossing_weight: 20.0        # peak 3.9 → effective 31    (yield at crossings)
-          crossing_bearing_weight: 5.0  # sub-weight INSIDE CrossingCost (bearing vs speed ratio)
+          #crossing_bearing_weight: 5.0  # sub-weight INSIDE CrossingCost (bearing vs speed ratio) [commented-out duplicate]
           {% endblock -%}

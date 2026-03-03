@@ -116,7 +116,7 @@ class NavigationHandler:
 
         # Wait until any one of them is triggered
         done, pending = await asyncio.wait(
-            [event.wait() for event in self.navigator.getEvents()],
+            [asyncio.ensure_future(event.wait()) for event in self.navigator.getEvents()],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
@@ -191,10 +191,18 @@ class NavigationHandler:
             self.logger.error(f"Failed to {description}: {exc}")
             return False
 
-    async def _clear_costmaps_safe(self) -> None:
-        try:
-            await self.navigator.clearAllCostmaps()
-        except Exception as exc:  # noqa: BLE001
-            self.logger.warning(
-                f"Unable to clear costmaps after Nav2 reset; continuing anyway: {exc}"
-            )
+    async def _clear_costmaps_safe(self, retries: int = 3) -> None:
+        for attempt in range(1, retries + 1):
+            try:
+                await self.navigator.clearAllCostmaps()
+                return
+            except Exception as exc:  # noqa: BLE001
+                if attempt < retries:
+                    self.logger.warning(
+                        f"Costmap clear attempt {attempt}/{retries} failed: {exc}; retrying..."
+                    )
+                    await asyncio.sleep(0.5)
+                else:
+                    self.logger.warning(
+                        f"Unable to clear costmaps after {retries} attempts; continuing anyway: {exc}"
+                    )

@@ -166,7 +166,9 @@ def get_navigator_yaml(navigator: str) -> pathlib.Path:
     navigator_yaml = select_resource_template('navigator', navigator_config['nav_template'], search_paths, env)
     # Render the template with the navigator configuration
 
-    output_path = pathlib.Path('/tmp') / f"{navigator}_config.yaml"
+    import tempfile, os
+    output_dir = pathlib.Path(tempfile.mkdtemp(prefix="gazebo_test_nav_"))
+    output_path = output_dir / f"{navigator}_pid{os.getpid()}_config.yaml"
     with open(output_path, 'w') as f:
         f.write(navigator_yaml)
     if not output_path.exists():

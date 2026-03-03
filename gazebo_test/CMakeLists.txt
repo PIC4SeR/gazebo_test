@@ -55,7 +55,6 @@ install(PROGRAMS
   scripts/full_experiment
   scripts/environment_camera
   scripts/annotate_snapshot
-  scripts/people_visualizer
   DESTINATION lib/${PROJECT_NAME}
 )
 

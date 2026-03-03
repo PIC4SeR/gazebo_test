@@ -13,6 +13,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from ament_index_python import get_resources, get_resource
 from typing import Optional, List, Dict, Tuple
+import warnings
 
 from gazebo_test.script_utils.parsing_utils import (
     print_summary,
@@ -339,7 +340,7 @@ def run(args: argparse.Namespace):
         navigator_path = None
         if args.nav_params:
             if args.navigator is not None:
-                Warning(
+                warnings.warn(
                     "Both navigation parameters file and navigator specified. Using the navigator to generate the parameters file."
                 )
                 navigator_path = args.navigator

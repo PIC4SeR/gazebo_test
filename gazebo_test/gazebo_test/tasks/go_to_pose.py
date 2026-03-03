@@ -1,5 +1,6 @@
 from rclpy.node import Node
 import rclpy
+import rclpy.duration
 
 from gazebo_test.utils.gazebo_env_handler import GazeboEnvironmentHandler
 from gazebo_test.utils.evaluation_handler import ExperimentEvaluator, ExperimentResult
@@ -432,14 +433,17 @@ class ExperimentManager(Node):
                     header=not file_exists,
                     index=False,
                 )
+                # Atomic re-sort: write to a temp file first, then replace
                 df = pd.read_csv(self.experiment_outcomes_path)
                 df = df.sort_values(by=["experiment_tag", "run_id"])
+                tmp_path = self.experiment_outcomes_path.with_suffix(".csv.tmp")
                 df.to_csv(
-                    self.experiment_outcomes_path,
+                    tmp_path,
                     mode="w",
                     header=True,
                     index=False,
                 )
+                tmp_path.replace(self.experiment_outcomes_path)
             # Mark the job as complete
             _ = self._job_coordinator.complete_job_success(handle, str(result))
             return True
@@ -490,9 +494,10 @@ class ExperimentManager(Node):
             self.get_logger().debug(
                 f"Waiting for {self.wait_before_start} seconds before starting the experiment ..."
             )
-            # create a rate object to wait
-            rclpy_rate = self.create_rate(1 / self.wait_before_start)
-            rclpy_rate.sleep()
+            # Use a sim-time-aware timer via asyncio sleep tied to the ROS clock
+            wait_end = self.get_clock().now() + rclpy.duration.Duration(seconds=self.wait_before_start)
+            while self.get_clock().now() < wait_end:
+                await asyncio.sleep(0.1)
             self.get_logger().debug("Wait completed")
         # start navigation
         # create task to wait for the robot to reach the goal

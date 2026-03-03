@@ -155,6 +155,7 @@ class BasicNavigator:
             self.logger.error("Follow path was rejected!")
             return False
         self.follow_path_result = self.follow_path_goal_handle.get_result_async()
+        self.follow_path_result.add_done_callback(self._follow_path_result_callback)
         return True
 
     async def cancelGoToPose(self):

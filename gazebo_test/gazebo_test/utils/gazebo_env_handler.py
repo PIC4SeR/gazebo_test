@@ -263,6 +263,9 @@ class GazeboEnvironmentHandler:
             self.logger.error("Failed to resume Gazebo environment")
             return False
 
+        # Allow physics to settle for a few simulation steps after unpause
+        await asyncio.sleep(0.5)
+
         self.logger.debug("Experiment reset successfully")
 
         return True
