@@ -247,7 +247,7 @@ def run(args: argparse.Namespace):
     if checkpoint_enabled and ExperimentCheckpointStore is None:
         raise RuntimeError(
             "Checkpoint store support is unavailable because the 'psycopg' dependency is missing. Install it or rerun with --disable-checkpoint."
-        ) from _checkpoint_import_error
+        )
     selected_algorithm_name = (args.algorithm_name or "").strip()
     if not selected_algorithm_name:
         selected_algorithm_name = (args.navigator or "").strip()

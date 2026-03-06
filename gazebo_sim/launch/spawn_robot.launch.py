@@ -154,6 +154,7 @@ def _spawn_robot_with_controllers(context, launch_configurations):
                 "config_jackal_velocity": config_jackal_velocity_controller,
                 "config_jackal_localization": config_jackal_localization,
             },
+            condition=IfCondition(use_gazebo_controllers),
         )
         actions.append(jackal_control)
         teleop_base = include_scoped_launch_py_description(
