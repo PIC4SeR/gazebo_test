@@ -26,6 +26,7 @@ from gazebo_sim.launch_arguments.hunav import HunavArgs
 class LaunchArguments(LaunchArgumentsBaseParam):
     """Common arguments required to bring up the Gazebo world."""
 
+    world_name: DeclareLaunchArgument = GazeboCommonArgs.world_name
     world_pkg_name: DeclareLaunchArgument = HunavArgs.world_pkg_name
     use_sim_time: DeclareLaunchArgument = GazeboCommonArgs.use_sim_time
     headless: DeclareLaunchArgument = GazeboCommonArgs.headless
@@ -39,7 +40,7 @@ def generate_launch_description() -> LaunchDescription:
 
     world_path = path_to_file_in_pkg(
         pkg_name=LaunchConfiguration("world_pkg_name"),
-        paths=["worlds", "generatedWorld.world"],
+        paths=["worlds", LaunchConfiguration("world_name")],
     )
 
     gz_server_launch = IncludeLaunchDescription(

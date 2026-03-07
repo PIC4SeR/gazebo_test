@@ -9,7 +9,7 @@ from launch.actions import (
 
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.event_handlers import OnProcessStart
+from launch.event_handlers import OnProcessIO, OnProcessStart
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
 from gazebo_sim.launch.launch_utils import (
@@ -41,6 +41,13 @@ class LaunchArguments(LaunchArgumentsBase):
     ignore_models: DeclareLaunchArgument = HunavArgs.ignore_models
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
     use_collision: DeclareLaunchArgument = HunavArgs.use_collision
+
+
+def _event_contains(event, text: str) -> bool:
+    event_text = (
+        event.text.decode() if isinstance(event.text, (bytes, bytearray)) else event.text
+    )
+    return text in event_text
 
 
 def _launch_hunav_world_generator(context, *args, **kwargs):
@@ -97,17 +104,24 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
     )
 
     ordered_launch_event_2 = RegisterEventHandler(
-        OnProcessStart(
+        OnProcessIO(
             target_action=hunav_gazebo_worldgen_node,
-            on_start=TimerAction(
-                period=5.0,
-                actions=[
-                    ExecuteProcess(
-                        cmd=["echo", "Hunav world generation finished"],
-                        output="screen",
-                    )
-                ],
-            ),
+            on_stdout=lambda event: [
+                ExecuteProcess(
+                    cmd=["echo", "Hunav world generation finished"],
+                    output="screen",
+                )
+            ]
+            if _event_contains(event, "New world file created!")
+            else [],
+            on_stderr=lambda event: [
+                ExecuteProcess(
+                    cmd=["echo", "Hunav world generation finished"],
+                    output="screen",
+                )
+            ]
+            if _event_contains(event, "New world file created!")
+            else [],
         )
     )
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -5,6 +7,7 @@ from launch.actions import (
     OpaqueFunction,
     RegisterEventHandler,
     SetLaunchConfiguration,
+    TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessIO
@@ -50,7 +53,14 @@ class LaunchArguments(LaunchArgumentsBaseParam):
 
 
 def launch_gazebo_world(context, *args, **kwargs):
-
+    base_world = LaunchConfiguration("base_world").perform(context)
+    if UnlessCondition(LaunchConfiguration("start_hunav")).evaluate(context):
+        world_name = base_world
+    elif Path(base_world).is_absolute():
+        world_name = str(Path(base_world).with_name("generatedWorld.world"))
+    else:
+        world_name = "generatedWorld.world"
+    LogInfo(msg="Launching Gazebo world: " + world_name).execute(context)
     return [
         include_scoped_launch_py_description(
             pkg_name="gazebo_sim",
@@ -59,8 +69,11 @@ def launch_gazebo_world(context, *args, **kwargs):
                 "world_pkg_name": LaunchConfiguration("world_pkg_name"),
                 "use_sim_time": LaunchConfiguration("use_sim_time"),
                 "headless": LaunchConfiguration("headless"),
+                "world_name": world_name,
             },
-        )
+        ),
+        # Give gzserver time to advertise /spawn_entity before spawning the robot.
+        TimerAction(period=5.0, actions=[OpaqueFunction(function=spawn_robot)]),
     ]
 
 
@@ -133,6 +146,11 @@ def generate_launch_description():
         function=launch_hunav_generation,
     )
 
+    launch_simulation_without_hunav = OpaqueFunction(
+        function=launch_gazebo_world,
+        condition=UnlessCondition(LaunchConfiguration("start_hunav")),
+    )
+
     launch_simulation = RegisterEventHandler(
         OnProcessIO(
             on_stdout=lambda event: (
@@ -144,13 +162,14 @@ def generate_launch_description():
                 if b"generation finished" in event.text
                 else []
             ),
-        )
+        ),
+        condition=IfCondition(LaunchConfiguration("start_hunav")),
     )
     ld.add_action(hunav_world_generation)
+    ld.add_action(launch_simulation_without_hunav)
     ld.add_action(launch_simulation)
     ld.add_action(
         map_to_odom_identity(use_sim_time=LaunchConfiguration("use_sim_time"))
     )
-    ld.add_action(OpaqueFunction(function=spawn_robot))
 
     return ld
