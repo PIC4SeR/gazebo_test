@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <QGroupBox>
 #include <QMetaObject>
 
@@ -14,6 +16,19 @@
 
 namespace rviz_goal_pose_annotator
 {
+
+namespace
+{
+
+YAML::Node toThreeDecimalNode(double value)
+{
+  std::ostringstream stream;
+  stream.setf(std::ios::fixed);
+  stream << std::setprecision(3) << value;
+  return YAML::Load(stream.str());
+}
+
+}  // namespace
 
 GoalPoseAnnotatorPanel::GoalPoseAnnotatorPanel(QWidget * parent)
 : rviz_common::Panel(parent)
@@ -91,7 +106,8 @@ void GoalPoseAnnotatorPanel::setupUi()
   auto * output_group = new QGroupBox("YAML output", this);
   auto * output_layout = new QVBoxLayout(output_group);
   output_file_edit_ = new QLineEdit(
-    std::string(ament_index_cpp::get_package_share_directory("gazebo_experiments") + "/goals_and_poses/social_env_test.yaml").c_str(),
+    std::filesystem::path(std::filesystem::current_path() / "goals_and_poses_output.yaml")
+    .string().c_str(),
     this);
   choose_file_btn_ = new QPushButton("Choose output file", this);
   connect(choose_file_btn_, &QPushButton::clicked, this,
@@ -679,22 +695,23 @@ void GoalPoseAnnotatorPanel::appendEpisodeToYaml()
     root["map_package"] = map_package_edit_->text().toStdString();
   }
   YAML::Node initial_pose(YAML::NodeType::Sequence);
-  initial_pose.push_back(init_x_edit_->value());
-  initial_pose.push_back(init_y_edit_->value());
-  initial_pose.push_back(init_yaw_edit_->value());
+  initial_pose.push_back(toThreeDecimalNode(init_x_edit_->value()));
+  initial_pose.push_back(toThreeDecimalNode(init_y_edit_->value()));
+  initial_pose.push_back(toThreeDecimalNode(init_yaw_edit_->value()));
   initial_pose.SetStyle(YAML::EmitterStyle::Flow);
   root["initial_pose"] = initial_pose;
 
   YAML::Node goal_pose(YAML::NodeType::Sequence);
-  goal_pose.push_back(captured_goal_->x);
-  goal_pose.push_back(captured_goal_->y);
+  goal_pose.push_back(toThreeDecimalNode(captured_goal_->x));
+  goal_pose.push_back(toThreeDecimalNode(captured_goal_->y));
+  goal_pose.push_back(toThreeDecimalNode(captured_goal_->yaw));
   goal_pose.SetStyle(YAML::EmitterStyle::Flow);
   root["goals"][episode_name] = goal_pose;
 
   YAML::Node start_pose(YAML::NodeType::Sequence);
-  start_pose.push_back(captured_start_->x);
-  start_pose.push_back(captured_start_->y);
-  start_pose.push_back(captured_start_->yaw);
+  start_pose.push_back(toThreeDecimalNode(captured_start_->x));
+  start_pose.push_back(toThreeDecimalNode(captured_start_->y));
+  start_pose.push_back(toThreeDecimalNode(captured_start_->yaw));
   start_pose.SetStyle(YAML::EmitterStyle::Flow);
   root["poses"][episode_name] = start_pose;
 
@@ -757,9 +774,9 @@ void GoalPoseAnnotatorPanel::updatePoseStatusLabel(
   const Pose2D & p = *pose;
   label->setText(QString("%1x=%2 y=%3 yaw=%4")
     .arg(QString::fromStdString(text))
-    .arg(QString::number(p.x, 'f', 2))
-    .arg(QString::number(p.y, 'f', 2))
-    .arg(QString::number(p.yaw, 'f', 2)));
+    .arg(QString::number(p.x, 'f', 3))
+    .arg(QString::number(p.y, 'f', 3))
+    .arg(QString::number(p.yaw, 'f', 3)));
 }
 
 void GoalPoseAnnotatorPanel::updateStatus(const QString & text, bool is_error)

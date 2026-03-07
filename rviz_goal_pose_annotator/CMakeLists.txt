@@ -26,10 +26,12 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets)
 set(CMAKE_AUTOMOC ON)
 qt5_wrap_cpp(MOC_FILES
   include/rviz_goal_pose_annotator/goal_pose_annotator_panel.hpp
+  include/rviz_goal_pose_annotator/semantic_map_panel.hpp
 )
 
 add_library(goal_pose_annotator_panel SHARED
   src/goal_pose_annotator_panel.cpp
+  src/semantic_map_panel.cpp
   ${MOC_FILES}
 )
 
