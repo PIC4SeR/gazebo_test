@@ -40,25 +40,33 @@ def parse_entity_state_yaml(yaml_path: Path) -> Dict[str, Dict[str, EntityState]
     goal_entities = {}
 
     for episode in episodes:
-        goal = goals.get(episode, [])
-        pose = poses.get(episode, [])
+        goal = goals.get(episode)
+        pose = poses.get(episode)
+        if goal is None or len(goal) < 2:
+            raise ValueError(
+                f"Episode '{episode}' is missing a valid 'goals' entry [x, y]."
+            )
+        if pose is None or len(pose) < 3:
+            raise ValueError(
+                f"Episode '{episode}' is missing a valid 'poses' entry [x, y, theta]."
+            )
 
         goal_entity = EntityState()
         goal_entity.name = goal_name
         goal_entity.pose = Pose()
-        goal_entity.pose.position.x = goal[0]
-        goal_entity.pose.position.y = goal[1]
+        goal_entity.pose.position.x = float(goal[0])
+        goal_entity.pose.position.y = float(goal[1])
 
         initial_state_entity = EntityState()
         initial_state_entity.name = robot_name
         initial_state_entity.pose = Pose()
 
         # Position
-        initial_state_entity.pose.position.x = pose[0]
-        initial_state_entity.pose.position.y = pose[1]
+        initial_state_entity.pose.position.x = float(pose[0])
+        initial_state_entity.pose.position.y = float(pose[1])
         initial_state_entity.pose.position.z = 0.07
         # Orientation
-        quaternion = quaternion_from_euler(0, 0, pose[2])
+        quaternion = quaternion_from_euler(0, 0, float(pose[2]))
         initial_state_entity.pose.orientation.x = quaternion[0]
         initial_state_entity.pose.orientation.y = quaternion[1]
         initial_state_entity.pose.orientation.z = quaternion[2]

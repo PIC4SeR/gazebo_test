@@ -36,10 +36,12 @@ def main():
     executor_thread.start()
 
     # Run the asyncio event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run(exp_menager))
     finally:
+        loop.close()
         exp_menager.destroy_node()
         rclpy.shutdown()
         executor_thread.join()

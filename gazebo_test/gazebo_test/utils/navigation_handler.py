@@ -146,10 +146,14 @@ class NavigationHandler:
         self.logger.debug("Event triggered")
         # Call the callback function with the triggered event
         success = self.navigator.go_to_pose_status == TaskResult.SUCCEEDED
-        if callback:
-            callback(success)
+        result_callback = callback or self._default_navigation_result_callback
+        if result_callback is not None:
+            result_callback(success)
         else:
-            self._default_navigation_result_callback(success)
+            self.logger.warning(
+                "Navigation finished but no result callback is configured; "
+                "result will not be reported."
+            )
 
     async def shutdown_navigation(self) -> None:
         """

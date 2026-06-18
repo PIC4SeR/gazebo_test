@@ -142,9 +142,10 @@ def get_experiment_files() -> Dict[str, str]:
                 if not resources_items:
                     continue
                 resource_name, resource_path = resources_items.split(";")
+                base_name = resource_name
                 i = 1
                 while resource_name in resources.keys():
-                    resource_name = f"{resource_name}_{i}"
+                    resource_name = f"{base_name}_{i}"
                     i += 1
 
                 resources[resource_name] = os.path.join(package_path, resource_path)
@@ -177,14 +178,19 @@ def get_experiment_ids() -> List[str]:
 
     # Get the names of the experiments from the YAML files
     # open the yaml files and extract the experiment names
-    experiment_names = []
+    # (dedupe while preserving discovery order)
+    experiment_names: List[str] = []
+    seen = set()
     for f in yaml_files:
         with open(f, "r") as file:
             try:
                 data = yaml.safe_load(file)
                 experiments = data.get("experiments", None)
                 if experiments:
-                    experiment_names.extend(experiments)
+                    for name in experiments:
+                        if name not in seen:
+                            seen.add(name)
+                            experiment_names.append(name)
             except Exception as e:
                 print(f"Error reading {f}: {e}")
 

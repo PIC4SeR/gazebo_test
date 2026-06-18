@@ -85,8 +85,10 @@ def get_navigator_config(navigator: str, search_paths: List[str]) -> Dict:
                 return configs[navigator]
     raise ValueError(f"Navigator '{navigator}' not registered. Available: {list_available_navigators(search_paths)}")
 
-def list_available_navigators(search_paths: List[str]=get_template_search_paths(resources)) -> List[str]:
+def list_available_navigators(search_paths: Optional[List[str]] = None) -> List[str]:
     """Get a List of all available navigator names from registered navigators."""
+    if search_paths is None:
+        search_paths = get_template_search_paths(resources)
     registered_navigators = get_registered_resources('gazebo_test_navigators', search_paths)
     available_navigators = []
     for pkg_name, path in registered_navigators.items():
