@@ -10,6 +10,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>gazebo_test</depend>
+  <!-- Provides the `ros2 gazeboexp` command invoked by scripts/optuna_optimization. -->
+  <exec_depend>gazebo_test_cli</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

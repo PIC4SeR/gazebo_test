@@ -79,9 +79,8 @@ def run_experiment(param_dict):
     result = subprocess.run(
         [
             "ros2",
+            "gazeboexp",
             "run",
-            "gazebo_test",
-            "full_experiment",
             "social_nav",  # TODO: change this to a parameter
             "--hunav-eval",
             "--headless",

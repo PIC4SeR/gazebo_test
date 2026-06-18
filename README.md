@@ -86,6 +86,7 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 ## Packages
 
 - ['gazebo_test'](gazebo_test/README.md): The main package containing the test framework and utilities.
+- `gazebo_test_cli`: CLI front-end for the framework — the `full_experiment` console script and the native `ros2 gazeboexp` command (with shell tab-completion).
 - ['gazebo_sim'](gazebo_sim/README.md): A package containing Gazebo simulation models and worlds for testing.
 
 ## Usage
@@ -105,7 +106,7 @@ End-to-end automation for running social navigation benchmarks in Gazebo with RO
 
 - **Experiment Manager (`gazebo_test/tasks/go_to_pose.py`)** orchestrates each run, writes CSV outcomes, and keeps bag recordings in a deterministic structure keyed by checkpoint, algorithm, and experiment identifier.
 - **Checkpoint Store (`gazebo_test/utils/checkpoint_store.py`)** uses PostgreSQL to register jobs, claim work atomically, track progress, and requeue stalled jobs based on heartbeat timestamps.
-- **Automation CLI (`scripts/full_experiment`)** spins up Gazebo, navigation, evaluators, and the experiment manager via tmux. It consults the checkpoint store before launching to skip sessions with no remaining work.
+- **Automation CLI (`gazebo_test_cli`)** spins up Gazebo, navigation, evaluators, and the experiment manager via tmux. It ships as the `full_experiment` console script (on `PATH`) and the native `ros2 gazeboexp` command, both with shell tab-completion. It consults the checkpoint store before launching to skip sessions with no remaining work.
 - **Bag Recorder (`gazebo_test/utils/bag_recorder.py`)** writes bags into the shared results directory, reusing `run_<id>` folders when an experiment is re-run.
 
 ## Prerequisites
@@ -152,7 +153,7 @@ Prepare experiment YAML files (goals and poses) and navigation configs under `sr
 Use the automation CLI, which manages Gazebo, navigation, optional evaluators, and the experiment manager:
 
 ```bash
-./src/gazebo_test/scripts/full_experiment run \
+ros2 gazeboexp run \
 	social_env_test_benchmark \
 	--navigator MPPI \
 	--bag-record \
@@ -165,7 +166,7 @@ To replace the default Nav2 bringup in the Navigation tmux window, pass a launch
 command explicitly:
 
 ```bash
-./src/gazebo_test/scripts/full_experiment run \
+ros2 gazeboexp run \
 	social_env_test_benchmark \
 	--navigation-launch "my_nav_pkg my_nav.launch.py map:={map}" \
 	--navigation-backend action

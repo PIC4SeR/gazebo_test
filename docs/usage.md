@@ -38,10 +38,10 @@ TODO: Add the command to run RViz with the appropriate configuration file.
 
 ## Running Tests (Full Modality)
 
-To run the full test modality, you need to have `tmux` installed. The full test modality allows you to all the previous scripts in a tmux session. To run the full test modality run the following command:
+To run the full test modality, you need to have `tmux` installed. The full test modality allows you to all the previous scripts in a tmux session. The orchestrator lives in the `gazebo_test_cli` package and is exposed both as a `full_experiment` console script (on `PATH`) and as a native `ros2 gazeboexp` command, so shell tab-completion works for experiment names, navigator profiles, and YAML paths. To run the full test modality run the following command:
 
 ```bash
-ros2 run gazebo_test full_experiment
+ros2 gazeboexp run        # or: full_experiment run
 ```
 
 This will run all the previous scripts in a tmux session.
@@ -49,7 +49,7 @@ This will run all the previous scripts in a tmux session.
 To replace the default navigation launch in the tmux session:
 
 ```bash
-ros2 run gazebo_test full_experiment run social_nav \
+ros2 gazeboexp run social_nav \
   --navigation-launch "my_nav_pkg my_nav.launch.py map:={map}" \
   --navigation-backend action
 ```

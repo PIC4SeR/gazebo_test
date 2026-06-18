@@ -50,9 +50,11 @@ install(DIRECTORY
 ament_python_install_package(${PROJECT_NAME})
 
 # Install Python scripts
+# NOTE: the full_experiment orchestrator moved to the gazebo_test_cli package
+# (ament_python) so it installs as a console_script on PATH and as the native
+# `ros2 gazeboexp` command, enabling shell tab-completion.
 install(PROGRAMS
   scripts/experiment_manager
-  scripts/full_experiment
   scripts/environment_camera
   scripts/annotate_snapshot
   DESTINATION lib/${PROJECT_NAME}

@@ -1,5 +1,12 @@
-#!/usr/bin/env python3
-# PYTHON_ARGCOMPLETE_OK
+"""Orchestrate a full Gazebo social-navigation experiment in tmux.
+
+The script brings up the Gazebo simulation, the Nav2 stack, RViz, an optional
+HuNav evaluator, and the experiment manager, each in its own tmux window.
+
+Shared by the standalone ``full_experiment`` console script (:func:`main`) and
+the ros2cli command extension (``ros2 gazeboexp``).
+"""
+
 import argparse
 import textwrap
 import libtmux
@@ -7,6 +14,7 @@ from libtmux.exc import LibTmuxException
 import os
 import time
 import argcomplete
+from argcomplete.completers import FilesCompleter
 import shlex
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
@@ -214,16 +222,21 @@ def _normalize_navigation_backend(navigation_backend: str) -> str:
     return aliases.get(normalized, normalized)
 
 
-def main():
+DESCRIPTION = textwrap.dedent(
+    """\
+    Run a full experiment in Gazebo with navigation and evaluation.
+    Use the run subcommand to start the experiment.
+    """
+)
 
-    # Parse command-line arguments
-    main_parser = argparse.ArgumentParser(
-        description="""Run a full experiment in Gazebo with navigation and evaluation.
-        Use the run subcommand to start the experiment.
-        """
-    )
 
-    sub_parser = main_parser.add_subparsers(dest="cmd", required=True)
+def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Populate ``parser`` with the run/list sub-commands and their completers.
+
+    Shared by the standalone console script (:func:`main`) and the ros2cli
+    command extension (``ros2 gazeboexp``).
+    """
+    sub_parser = parser.add_subparsers(dest="cmd", required=True)
 
     run_parser = sub_parser.add_parser(
         "run", help="Run a full experiment in Gazebo with navigation and evaluation."
@@ -261,13 +274,14 @@ def main():
         help="Do not use GPU for rendering (use CPU instead)",
     )
 
-    run_parser.add_argument(
+    experiment_action = run_parser.add_argument(
         "experiment",
         action="store",
         default="social_nav",
         help="The Experiment to run (chosen by the list of available experiments)\
             Hint: Use 'list' command to see all available experiments.",
     )
+    experiment_action.completer = lambda **kwargs: get_experiment_ids()  # type: ignore[attr-defined]
 
     run_parser.add_argument(
         "--wait-before-start",
@@ -276,20 +290,21 @@ def main():
         help="Number of seconds to wait before starting the experiment (to let the environment settle)",
     )
 
-    run_parser.add_argument(
+    nav_params_action = run_parser.add_argument(
         "--nav-params",
         action="store",
         default=None,
         help="The path to the navigation parameters file",
     )
 
-    run_parser.add_argument(
+    navigator_action = run_parser.add_argument(
         "--navigator",
         action="store",
         default=None,
         help="The navigation controller to use. \
         Hint: Use 'list' command to see all available controllers.",
     )
+    navigator_action.completer = lambda **kwargs: list_available_navigators()  # type: ignore[attr-defined]
 
     run_parser.add_argument(
         "--checkpoint-dsn",
@@ -309,7 +324,7 @@ def main():
         help="Resume experiments by skipping runs listed in the checkpoint file.",
     )
 
-    run_parser.add_argument(
+    eval_metrics_action = run_parser.add_argument(
         "--evaluation-metrics-file",
         action="store",
         default=os.path.join(
@@ -398,6 +413,11 @@ def main():
         ),
     )
 
+    # YAML/params path arguments complete to *.yaml files.
+    _yaml_completer = FilesCompleter(("yaml", "yml"), directories=True)
+    nav_params_action.completer = _yaml_completer  # type: ignore[attr-defined]
+    eval_metrics_action.completer = _yaml_completer  # type: ignore[attr-defined]
+
     run_parser.set_defaults(func=run)
     ls_parser = sub_parser.add_parser("list", help="List all available experiments.")
     ls_parser.set_defaults(
@@ -407,10 +427,19 @@ def main():
             _print_navigators(),
         ]
     )  # new line
-    argcomplete.autocomplete(main_parser, always_complete_options=False)
+    return parser
 
-    args = main_parser.parse_args()
+
+def dispatch(args: argparse.Namespace) -> None:
+    """Invoke the sub-command selected on ``args``."""
     args.func(args)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    build_parser(parser)
+    argcomplete.autocomplete(parser, always_complete_options=False)
+    dispatch(parser.parse_args())
 
 
 def run(args: argparse.Namespace):
