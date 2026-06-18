@@ -32,6 +32,7 @@ from gazebo_test.utils.navigation_handler import NavigationHandler
 from gazebo_test.utils.watchdog_monitor import ExperimentWatchdog
 
 from ament_index_python.packages import get_package_share_directory
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.parameter import Parameter
 
 from gazebo_test.utils.checkpoint_store import (
@@ -197,28 +198,20 @@ class ExperimentManager(Node):
         )
         self._current_job_handle: Optional[ExperimentJobHandle] = None
 
+        self.navigation_backend = str(
+            self.declare_parameter("navigation_backend", "nav2").value or "nav2"
+        ).strip()
+
+        default_required_nodes = self._default_watchdog_required_nodes()
         required_nodes_param = self.declare_parameter(
             "watchdog_required_nodes",
-            [
-                "/gazebo",
-                "/bt_navigator",
-                "/controller_server",
-                "/planner_server",
-                "/hunav_evaluator_node" if self.use_evaluator else "",
-                "/hunav_agent_manager",
-                "/hunav_plugin",
-            ],
+            default_required_nodes,
+            ParameterDescriptor(dynamic_typing=True),
         ).value
-        if isinstance(required_nodes_param, (list, tuple)):
-            required_nodes = [
-                str(node).strip() for node in required_nodes_param if str(node).strip()
-            ]
-        elif isinstance(required_nodes_param, str):
-            required_nodes = (
-                [required_nodes_param.strip()] if required_nodes_param else []
-            )
-        else:
-            required_nodes = []
+        required_nodes = self._parse_required_nodes_param(
+            required_nodes_param,
+            default_required_nodes,
+        )
 
         module_grace_param = self.declare_parameter(
             "watchdog_startup_grace_sec",
@@ -281,6 +274,7 @@ class ExperimentManager(Node):
         self.navigator = NavigationHandler(
             node=self,
             navigation_result_callback=self.evaluation_handler.set_navigation_result_event,
+            backend=self.navigation_backend,
         )
 
         self.initial_state_entities: Dict[str, EntityState] = {}
@@ -648,3 +642,36 @@ class ExperimentManager(Node):
             except Exception:  # noqa: BLE001
                 continue
         return completed
+
+    def _default_watchdog_required_nodes(self) -> List[str]:
+        nodes = ["/gazebo"]
+        if self.navigation_backend.strip().lower() == "nav2":
+            nodes.extend(["/bt_navigator", "/controller_server", "/planner_server"])
+        if self.use_evaluator:
+            nodes.append("/hunav_evaluator_node")
+        nodes.extend(["/hunav_agent_manager", "/hunav_plugin"])
+        return nodes
+
+    @staticmethod
+    def _parse_required_nodes_param(value, default_nodes: List[str]) -> List[str]:
+        if value is None:
+            return list(default_nodes)
+        if isinstance(value, (list, tuple)):
+            return [str(node).strip() for node in value if str(node).strip()]
+        if not isinstance(value, str):
+            return list(default_nodes)
+
+        raw_value = value.strip()
+        normalized_value = raw_value.lower()
+        if normalized_value in {"", "auto", "default", "null", "~"}:
+            return list(default_nodes)
+        if normalized_value in {"none", "[]"}:
+            return []
+        if raw_value.startswith("[") and raw_value.endswith("]"):
+            raw_value = raw_value[1:-1]
+
+        return [
+            node.strip().strip("'\"")
+            for node in re.split(r"[,;]", raw_value)
+            if node.strip().strip("'\"")
+        ]

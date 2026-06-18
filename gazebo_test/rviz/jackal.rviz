@@ -61,31 +61,11 @@ Visualization Manager:
         All Enabled: true
         agent1:
           Value: true
-        agent10:
-          Value: true
-        agent11:
-          Value: true
-        agent12:
-          Value: true
-        agent13:
-          Value: true
-        agent14:
-          Value: true
         agent2:
           Value: true
         agent3:
           Value: true
         agent4:
-          Value: true
-        agent5:
-          Value: true
-        agent6:
-          Value: true
-        agent7:
-          Value: true
-        agent8:
-          Value: true
-        agent9:
           Value: true
         base_link:
           Value: true
@@ -158,31 +138,11 @@ Visualization Manager:
         map:
           agent1:
             {}
-          agent10:
-            {}
-          agent11:
-            {}
-          agent12:
-            {}
-          agent13:
-            {}
-          agent14:
-            {}
           agent2:
             {}
           agent3:
             {}
           agent4:
-            {}
-          agent5:
-            {}
-          agent6:
-            {}
-          agent7:
-            {}
-          agent8:
-            {}
-          agent9:
             {}
           base_link:
             chassis_link:
@@ -528,7 +488,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        lookahead_points: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -564,6 +524,56 @@ Visualization Manager:
         Value: /jackal/detected_people
       Value: true
       Z Offset: 0.10000000149011612
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        Polygons: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /costmap_converter_markers
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/Polygon
+      Color: 25; 255; 0
+      Enabled: true
+      Name: Polygon
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /converter_costmap/published_footprint
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /costmap_converter_markers_array
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /sicnav_static_obstacles
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -619,11 +629,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 34.41062545776367
+      Scale: 58.061038970947266
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 4.500645637512207
-      Y: 4.105186462402344
+      X: 2.0272860527038574
+      Y: -0.9268220663070679
     Saved: ~
 Window Geometry:
   Displays:

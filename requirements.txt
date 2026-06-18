@@ -1,5 +1,4 @@
-numpy==1.24.4
 pandas==2.2.2
 libtmux==0.46.2
-transforms3d==0.4.1
+transforms3d==2.3.1
 psycopg[binary]==3.1.19

@@ -161,6 +161,23 @@ Use the automation CLI, which manages Gazebo, navigation, optional evaluators, a
 
 The script checks the checkpoint store before launching. If all jobs for the chosen algorithm/experiment are completed, nothing is started.
 
+To replace the default Nav2 bringup in the Navigation tmux window, pass a launch
+command explicitly:
+
+```bash
+./src/gazebo_test/scripts/full_experiment run \
+	social_env_test_benchmark \
+	--navigation-launch "my_nav_pkg my_nav.launch.py map:={map}" \
+	--navigation-backend action
+```
+
+`navigation_backend:=action` keeps the experiment manager's goal/result contract
+to a `navigate_to_pose` action, but skips Nav2 lifecycle resets and costmap
+clearing. Use `--no-navigation-launch --navigation-backend action` when that
+navigation stack is already running outside the tmux session. Experiments and
+navigator YAML files can also define `navigation_launch` using the same syntax;
+CLI `--navigation-launch` has priority.
+
 ### 3. Worker behaviour
 
 - When `ExperimentManager` starts, it enforces the DSN requirement, derives a **checkpoint namespace** (hashed from the DSN), and builds the output path:

@@ -194,6 +194,12 @@ class BasicNavigator:
         self.logger.info("Nav2 is ready for use!", once=True)
         return
 
+    async def waitUntilNavigateToPoseActive(self):
+        """Block until a NavigateToPose-compatible action server is available."""
+        await self._waitForActionServers([self.nav_to_pose_client])
+        self.logger.info("NavigateToPose action server is ready for use!", once=True)
+        return
+
     def setLoop(self, loop):
         """Set the loop for the navigator."""
         self._loop = loop
@@ -399,17 +405,27 @@ class BasicNavigator:
         return
 
     async def _waitForServer(self):
-        for client in [
-            self.nav_to_pose_client,
-            self.follow_path_client,
-            self.compute_path_to_pose_client,
-            self.smoother_client,
-        ]:
+        await self._waitForActionServers(
+            [
+                self.nav_to_pose_client,
+                self.follow_path_client,
+                self.compute_path_to_pose_client,
+                self.smoother_client,
+            ]
+        )
+        await self._waitForCostmapServices()
+        return
+
+    async def _waitForActionServers(self, clients):
+        for client in clients:
             while not client.wait_for_server(timeout_sec=1.0):
                 self.logger.debug(
                     f"{client.action_name} action server not available, waiting..."
                 )
         self.logger.debug("All action servers are available.")
+        return
+
+    async def _waitForCostmapServices(self):
         for srv in [
             self.clear_costmap_global_srv,
             self.clear_costmap_local_srv,

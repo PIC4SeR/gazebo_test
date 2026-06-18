@@ -120,6 +120,11 @@ def parse_experiment_name(experiment_name: str) -> Dict:
         "world_pkg_name": world_pkg_name,
         "agents_pkg_name": agents_pkg_name,
         "camera_config_file": camera_config_path,
+        "additional_launch_files": experiment.get("additional_launch_files", []),
+        "navigation_launch": experiment.get(
+            "navigation_launch",
+            experiment.get("navigation_launch_file", None),
+        ),
     }
 
 

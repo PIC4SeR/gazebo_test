@@ -1,0 +1,69 @@
+{% block controller_config -%}
+      plugin: "nav2_pybind::PybindControllerBase"
+      python_class: "nav2_pybind_sicnav_controller.sicnav_controller.SICNavController"
+
+      sensor_plugins:
+        people:
+           type: "ros2_pybind_sensor_plugins.sensors.people.PeopleStream"
+           topic: "/jackal/detected_people"  # overrides PeopleStream.topic
+        costmap_obstacles:
+           type: "ros2_pybind_sensor_plugins.sensors.obstacles.ObstacleArrayStream"
+           topic: "/costmap_obstacles"  # overrides ObstacleArrayStream.topic
+
+      publisher_plugins:
+        predicted_path:
+           type: "nav_msgs/msg/Path"
+           topic: "/local_plan"
+           qos: "default"
+        lookahead_point:
+           type: "visualization_msgs/msg/MarkerArray"
+           topic: "/lookahead_points"
+           qos: "default"
+
+      policy_name: {% if controller.policy_name is defined %}"{{ controller.policy_name }}"{% else %}"sicnav_acados"{% endif %}
+
+      # sicnav_acados benchmarking knob: false = real-robot solver branch
+      # (tight per-config iter caps + strict acceptance); true = sim branch
+      # (nlp_iter=50, qp_iter=15, lenient acceptance). Must be set pre-set_env
+      # to take effect on iter caps (baked at acados codegen).
+      is_sim_solver: {% if controller.is_sim_solver is defined %}{{ controller.is_sim_solver | lower }}{% else %}false{% endif %}
+
+      policy_config_path: "$(find-pkg-share nav2_pybind_sicnav_controller)/config/policy.config"
+      env_config_path: "$(find-pkg-share nav2_pybind_sicnav_controller)/config/env.config"
+
+      model_device: "cpu"
+
+      control_frequency: {% if controller.control_frequency is defined %}{{ controller.control_frequency }}{% else %}5.0{% endif %}
+
+      time_limit: 1000000.0   # seconds; effectively infinite
+
+      people_identifier: "people" # it should match PeopleStream.alias.
+      obstacles_identifier: "costmap_obstacles" # it should match ObstacleArrayStream.alias.
+      robot_radius: 0.3
+      robot_v_pref: 0.6
+      human_radius: 0.3
+
+      # SICNav bakes num_hums + num_stat_obs into MPCEnv on the first predict;
+      # the controller pads/truncates live detections to these constants every
+      # cycle so the MPC state vector stays correctly sized.
+      
+      max_humans: 3
+      max_static_segments: 4
+      static_merge_radius: 0.5             # drop segments near tracked people
+      min_static_segment_length: 0.1       # metres; avoids degenerate point-segments
+
+      # Goal shaping (m); goal_reinit_tolerance forces an MPC rebuild when the
+      # goal moves by more than this distance.
+      
+      goal_lookahead_distance: 2.0
+      goal_reinit_tolerance: 0.2
+
+      # Output saturation limits
+      
+      command_frame: "base_link"
+      max_linear_speed: 0.6
+      max_angular_speed: 1.4
+
+      predicted_path_publisher: "predicted_path"
+      lookahead_point_publisher: "lookahead_point"
+{% endblock -%}

@@ -3,7 +3,9 @@
       python_class: "nav2_pybind_crowdnav_controller.crowdnav_controller.CrowdNavController"
 
       sensor_plugins:
-        - "ros2_pybind_sensor_plugins.sensors.people.PeopleStream"
+        people:
+           type: "ros2_pybind_sensor_plugins.sensors.people.PeopleStream"
+           topic: "/jackal/detected_people"  # overrides PeopleStream.topic
 
       # Path to the serialized CrowdNav policy checkpoint.
       model_path: "$(find-pkg-share nav2_pybind_crowdnav_controller)/models/{% if controller.policy_name is defined %}{{ controller.policy_name }}{% else %}sarl{% endif %}/rl_model.pth"
@@ -16,7 +18,7 @@
       policy_config_path: "$(find-pkg-share nav2_pybind_crowdnav_controller)/models/{% if controller.policy_name is defined %}{{ controller.policy_name }}{% else %}sarl{% endif %}/policy.config"
       
       # People and obstacle handling
-      people_identifier: "/jackal/detected_people"
+      people_identifier: "people" # it should match PeopleStream.alias.
       static_cost_threshold: 80
       static_costmap_sample_step: 4
       static_merge_radius: 0.5

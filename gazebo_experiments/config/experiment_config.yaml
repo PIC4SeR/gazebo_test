@@ -10,8 +10,10 @@ experiment_manager:
     wait_before_start: #THIS IS SET IN THE LAUNCH FILE (default: None) (Number of seconds to wait before starting the experiment to let the environment settle)
     resume_checkpoint: #THIS IS SET IN THE LAUNCH FILE (default: False) (if True, the experiment manager will resume from the last checkpoint)
     checkpoint_dsn: #THIS IS SET IN THE LAUNCH FILE (default: None) (PostgreSQL DSN for the checkpoint store)
+    navigation_backend: #THIS IS SET IN THE LAUNCH FILE (default: nav2) (use action for custom NavigateToPose-compatible navigation launches without Nav2 lifecycle)
+    watchdog_required_nodes: #THIS IS SET IN THE LAUNCH FILE (default depends on navigation_backend) (comma-separated node names, or none to disable)
     algorithm_name: "test_algorithm"
     base_path: "/workspaces/hunavsim_devcontainer/results/gazebo_experiments"
     timeout_duration: 60.0
-    repetitions: 1
+    repetitions: 2
     goals_and_poses_file: "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_experiments/goals_and_poses/social_nav.yaml"

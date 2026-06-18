@@ -14,9 +14,17 @@ class NavigationHandler:
     It provides methods to reset the navigation stack and manage its lifecycle.
     """
 
-    def __init__(self, node: Node, navigation_result_callback=None) -> None:
+    VALID_BACKENDS = {"nav2", "action"}
+
+    def __init__(
+        self,
+        node: Node,
+        navigation_result_callback=None,
+        backend: str = "nav2",
+    ) -> None:
         self.node = node
         self._loop = None
+        self.backend = self._normalize_backend(backend)
         self.navigator = BasicNavigator(
             node=self.node,
         )
@@ -34,6 +42,12 @@ class NavigationHandler:
         loop = asyncio.get_running_loop()
         self._loop = loop
         self.navigator.setLoop(loop)
+        if self.backend == "action":
+            self.logger.debug("Waiting for NavigateToPose-compatible action server ...")
+            await self.navigator.waitUntilNavigateToPoseActive()
+            self.logger.debug("NavigationHandler initialized with action backend")
+            return
+
         node_state = await self.navigator.checkNodeState("bt_navigator")
         self.logger.debug(f"Node state: {node_state}")
         if node_state != "active":
@@ -65,6 +79,12 @@ class NavigationHandler:
         async with self._lifecycle_lock:
             await self.cancel_navigation()
             self.navigator.clearEvents()
+
+            if self.backend == "action":
+                self.logger.debug(
+                    "Skipping Nav2 lifecycle reset for action navigation backend"
+                )
+                return
 
             reset_ok = await self._call_lifecycle_step(
                 "reset Nav2", self.navigator.lifecycleReset
@@ -143,6 +163,11 @@ class NavigationHandler:
         async with self._lifecycle_lock:
             await self.cancel_navigation()
             self.navigator.clearEvents()
+            if self.backend == "action":
+                self.logger.debug(
+                    "Skipping Nav2 lifecycle shutdown for action navigation backend"
+                )
+                return
             await self._call_lifecycle_step(
                 "shutdown Nav2", self.navigator.lifecycleShutdown
             )
@@ -206,3 +231,19 @@ class NavigationHandler:
                     self.logger.warning(
                         f"Unable to clear costmaps after {retries} attempts; continuing anyway: {exc}"
                     )
+
+    def _normalize_backend(self, backend: str) -> str:
+        normalized = str(backend or "nav2").strip().lower()
+        aliases = {
+            "navigate_to_pose": "action",
+            "navigate-to-pose": "action",
+            "nav2_action": "action",
+            "nav2-action": "action",
+        }
+        normalized = aliases.get(normalized, normalized)
+        if normalized not in self.VALID_BACKENDS:
+            raise ValueError(
+                f"Unsupported navigation backend '{backend}'. "
+                f"Expected one of: {sorted(self.VALID_BACKENDS)}"
+            )
+        return normalized

@@ -174,4 +174,21 @@ def get_navigator_yaml(navigator: str) -> pathlib.Path:
     if not output_path.exists():
         raise FileNotFoundError(f"Failed to create navigator YAML file at {output_path}")
     return output_path
+
+
+def get_navigator_additional_launch_files(navigator: str) -> List:
+    """Return additional launch files declared by a registered navigator."""
+    search_paths = get_template_search_paths(resources)
+    navigator_config = get_navigator_config(navigator, search_paths)
+    return navigator_config.get("additional_launch_files", [])
+
+
+def get_navigator_navigation_launch(navigator: str):
+    """Return a replacement navigation launch declared by a registered navigator."""
+    search_paths = get_template_search_paths(resources)
+    navigator_config = get_navigator_config(navigator, search_paths)
+    return navigator_config.get(
+        "navigation_launch",
+        navigator_config.get("navigation_launch_file", None),
+    )
         

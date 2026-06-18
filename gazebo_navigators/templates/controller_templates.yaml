@@ -8,7 +8,8 @@ controller_templates:
   - pure_sfm
   - mpc
   - crowdnav
-  
+  - sicnav
+
 dwa:
   template: 'controllers/dwa_controller.yaml.j2'
   description: 'Dynamic Window Approach controller'
@@ -30,3 +31,6 @@ mpc:
 crowdnav:
   template: 'controllers/crowdnav_controller.yaml.j2'
   description: 'CrowdNav RL-based controller using Pybind11'
+sicnav:
+  template: 'controllers/sicnav_controller.yaml.j2'
+  description: 'SICNav (safe-interactive-crowdnav) MPC controller using Pybind11'

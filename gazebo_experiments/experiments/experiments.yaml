@@ -6,6 +6,22 @@ experiments:
   - social_nav_obstacles
   - social_scenarios
 
+# Optional per-experiment launch helpers can be declared under any experiment:
+# additional_launch_files:
+#   - "my_pkg my_launch.py arg:=value"
+#   - package: my_pkg
+#     launch: my_launch.py
+#     arguments:
+#       arg: value
+#
+# Optional replacement for the default gazebo_test Nav2 bringup:
+# navigation_launch:
+#   package: my_nav_pkg
+#   launch: my_nav.launch.py
+#   arguments:
+#     map: "{map}"
+#     params_file: "{params_file}"
+
 social_nav:
   goals_and_poses:
     goals_and_poses/social_nav.yaml

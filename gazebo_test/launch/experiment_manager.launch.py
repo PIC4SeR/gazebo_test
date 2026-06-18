@@ -38,6 +38,10 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     exp_config_pkg: DeclareLaunchArgument = ExperimentManagerArgs.exp_config_pkg
     checkpoint_dsn: DeclareLaunchArgument = ExperimentManagerArgs.checkpoint_dsn
     resume_checkpoint: DeclareLaunchArgument = ExperimentManagerArgs.resume_checkpoint
+    navigation_backend: DeclareLaunchArgument = ExperimentManagerArgs.navigation_backend
+    watchdog_required_nodes: DeclareLaunchArgument = (
+        ExperimentManagerArgs.watchdog_required_nodes
+    )
 
 
 def launch_setup(context, *args, **kwargs):

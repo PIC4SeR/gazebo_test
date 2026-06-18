@@ -74,3 +74,20 @@ class ExperimentManagerArgs:
         default_value="false",
         description="Resume experiments by skipping runs already marked in the checkpoint",
     )
+    navigation_backend: DeclareLaunchArgument = DeclareLaunchArgument(
+        "navigation_backend",
+        choices=["nav2", "action", "navigate_to_pose", "nav2_action"],
+        default_value="nav2",
+        description=(
+            "Navigation interface used by the experiment manager. "
+            "'nav2' uses lifecycle/costmap reset; 'action' only uses NavigateToPose."
+        ),
+    )
+    watchdog_required_nodes: DeclareLaunchArgument = DeclareLaunchArgument(
+        "watchdog_required_nodes",
+        default_value="",
+        description=(
+            "Comma-separated required node names for the experiment watchdog. "
+            "Use 'none' to disable node checks."
+        ),
+    )
