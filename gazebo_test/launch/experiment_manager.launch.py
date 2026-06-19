@@ -67,7 +67,11 @@ def launch_setup(context, *args, **kwargs):
         package="gazebo_test",
         executable="experiment_manager",
         output="screen",
-        parameters=[parameters],
+        parameters=[
+            parameters,
+            # Navigation config file used, recorded in the results provenance.
+            {"nav_params_file": LaunchConfiguration("nav_params_file").perform(context)},
+        ],
     )
     return [node]
 
@@ -78,5 +82,12 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     launch_arguments.add_to_launch_description(ld)
+    ld.add_action(
+        DeclareLaunchArgument(
+            "nav_params_file",
+            default_value="",
+            description="Navigation parameters/config file used (recorded for provenance).",
+        )
+    )
     ld.add_action(OpaqueFunction(function=launch_setup))
     return ld

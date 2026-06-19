@@ -39,6 +39,7 @@ from gazebo_test.utils.checkpoint_store import (
     ExperimentJobCoordinator,
     ExperimentJobHandle,
 )
+from gazebo_test.utils.provenance import write_experiment_provenance
 
 
 class ExperimentManager(Node):
@@ -69,6 +70,12 @@ class ExperimentManager(Node):
             str(base_path_value) or "results/gazebo_test"
         ).expanduser()
         self._experiment_identifier = Path(yaml_path).stem
+
+        # Navigation parameters/config file used for this group of runs (for
+        # provenance). Empty when navigation is launched externally.
+        self._nav_params_file = str(
+            self.declare_parameter("nav_params_file", "").value or ""
+        ).strip()
 
         timeout_duration = float(
             self.declare_parameter("timeout_duration", Parameter.Type.DOUBLE).value  # type: ignore
@@ -116,6 +123,18 @@ class ExperimentManager(Node):
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.get_logger().info(
             f"Results base path set to: {self.base_path} (checkpoint namespace: {self._checkpoint_namespace})"
+        )
+
+        # Record provenance (config copy + git state) for this results group so
+        # every run under base_path is traceable to one parameter set / code state.
+        write_experiment_provenance(
+            base_path=self.base_path,
+            algorithm_name=self.algorithm_name,
+            experiment_identifier=self._experiment_identifier,
+            config_file=self._nav_params_file or None,
+            anchor_paths=[Path(get_package_share_directory("gazebo_test"))],
+            extra={"environment_type": "gazebo"},
+            logger=self.get_logger(),
         )
 
         self.experiment_outcomes_path = Path(

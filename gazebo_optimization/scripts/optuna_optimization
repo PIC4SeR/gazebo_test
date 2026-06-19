@@ -1,143 +1,270 @@
 #!/usr/bin/env python3
+"""Optuna driver for the gazebo_test benchmark.
+
+Generalized per docs/optuna_parameter_tuning.md §4 + §7:
+
+* Search space is a list of FULLY-QUALIFIED dotted paths with explicit types
+  (float / int / categorical), so any nested controller key is reachable — not
+  just the MPC ``optimizer.weights`` subtree. The legacy nested
+  ``FollowPath.optimizer.weights`` format is still accepted for back-compat.
+* Base params come from the rendered navigator YAML (``get_navigator_yaml``)
+  when ``--navigator`` is given, else from a static ``nav2_params.yaml``.
+* Objectives (active set + directions + weights) are read from
+  ``objectives.yaml`` instead of being hard-coded.
+* Cost is read from ``<algorithm>_outcomes.csv`` (the merged source of truth),
+  aggregated over experiment_tag × run_id, with explicit failure handling.
+"""
+
+import argparse
+import copy
+import glob
+import os
+import uuid
 
 import optuna
+import pandas as pd
 import subprocess
 import yaml
-import time
-import os
 from ament_index_python.packages import get_package_share_directory
-import pandas as pd
 
-original_param_file = os.path.join(
-    get_package_share_directory("gazebo_optimization"), "config", "nav2_params.yaml"
-)
+CONFIG_DIR = os.path.join(get_package_share_directory("gazebo_optimization"), "config")
 
-params_to_optimize_file = os.path.join(
-    get_package_share_directory("gazebo_optimization"),
-    "config",
-    "params_to_optimize.yaml",
-)
+# Large finite penalty for failed trials (§7.3). Finite (not inf) keeps NSGA-II
+# / TPE samplers well-behaved.
+PENALTY = 1.0e6
+
+# objectives.yaml uses intent names; the hunav evaluator writes slightly
+# different column names into outcomes.csv. Map intent -> actual column, with a
+# fallback to the name itself when it already matches.
+METRIC_COLUMN_ALIASES = {
+    "social_work_step": "social_work",
+    "avg_speed": "avg_robot_linear_speed",
+    "personal_space_violation": "personal_space_intrusions",
+}
 
 
-def load_params_from_file(file_path):
+# --------------------------------------------------------------------------- #
+# Config loading
+# --------------------------------------------------------------------------- #
+def load_yaml(file_path):
     with open(file_path, "r") as file:
         return yaml.safe_load(file)
 
 
-def substitute_controller_params(original_params, new_params):
-    param_dict = original_params.copy()
-    controller_params = (
-        original_params.get("controller_server", {})
-        .get("ros__parameters", {})
-        .get("FollowPath", {})
-        .get("optimizer", {})
-        .get("weights", {})
+def load_search_space(file_path):
+    """Return a list of param specs: ``[{path, type, min/max/choices, log}]``.
+
+    Accepts the new path-based format (``parameters:`` list) and the legacy
+    nested ``FollowPath.optimizer.weights`` float-only format.
+    """
+    data = load_yaml(file_path)
+
+    if isinstance(data, dict) and "parameters" in data:
+        return data["parameters"]
+
+    # Legacy format: FollowPath.optimizer.weights.<key>: {min, max}
+    weights = (
+        (data or {}).get("FollowPath", {}).get("optimizer", {}).get("weights", {})
     )
-    for key, value in new_params.items():
-        if key in controller_params:
-            controller_params[key] = new_params.get(key, value)
-        else:
-            print(f"Warning: {key} not found in original parameters.")
-    return param_dict
+    if not weights:
+        raise ValueError(
+            f"No parameters found in {file_path}. Expected a 'parameters:' list "
+            "or a legacy 'FollowPath.optimizer.weights' block."
+        )
+    base = "controller_server.ros__parameters.FollowPath.optimizer.weights"
+    return [
+        {"path": f"{base}.{key}", "type": "float", "min": v["min"], "max": v["max"]}
+        for key, v in weights.items()
+    ]
 
 
-def parse_output_for_cost(output):
-    # This function should parse the output of the experiment to extract the path of the file where the cost is stored.
-    # For demonstration purposes, let's assume the output contains a line like "Log file: /path/to/log/file"
-    lines = output.splitlines()
-    for line in lines:
-        if "Log file:" in line:
-            log_file_path = line.split("Log file:")[1].strip()
-            # Read the log file to get the cost
-            # load the csv file in a pandas dataframe
-            df = pd.read_csv(log_file_path)
-            # Assuming the cost is in a column named 'path_length'
-            if "path_length" in df.columns:
-                cost = df["path_length"].mean()  # or use another aggregation method
-                cost2 = df["social_work"].mean()  # Assuming another metric
-                cost3 = df["time_to_reach_goal"].mean()  # Assuming another metric
-                print(f"Extracted cost: {cost}, {cost2}, {cost3}")
-                return cost, cost2, cost3
-    raise ValueError("Cost not found in the output. Please check the output format.")
+def load_objectives(file_path):
+    """Return ordered ``[(name, column, direction, weight)]`` for active objectives."""
+    data = load_yaml(file_path) or {}
+    objectives = []
+    for name, cfg in (data.get("objectives") or {}).items():
+        cfg = cfg or {}
+        if not cfg.get("active"):
+            continue
+        column = METRIC_COLUMN_ALIASES.get(name, name)
+        direction = "minimize" if cfg.get("minimize", True) else "maximize"
+        objectives.append((name, column, direction, float(cfg.get("weight", 1.0))))
+    if not objectives:
+        raise ValueError(f"No active objectives in {file_path}.")
+    return objectives
 
 
-def run_experiment(param_dict):
+# --------------------------------------------------------------------------- #
+# Parameter substitution (recursive set-by-path)
+# --------------------------------------------------------------------------- #
+def set_by_path(d, dotted, value):
+    keys = dotted.split(".")
+    for k in keys[:-1]:
+        d = d.setdefault(k, {})
+    d[keys[-1]] = value
 
-    original_param_dict = load_params_from_file(original_param_file)
-    # get the controller parameters from the original file
-    controller_params = original_param_dict.get("controller_server", {}).get(
-        "ros__parameters", {}
+
+def suggest(trial, spec):
+    name = spec["path"]
+    ptype = spec.get("type", "float")
+    log = spec.get("log", False)
+    if ptype == "int":
+        return trial.suggest_int(name, spec["min"], spec["max"], log=log)
+    if ptype == "categorical":
+        return trial.suggest_categorical(name, spec["choices"])
+    return trial.suggest_float(name, spec["min"], spec["max"], log=log)
+
+
+def build_params(trial, base_yaml, search_space):
+    params = copy.deepcopy(base_yaml)
+    for spec in search_space:
+        set_by_path(params, spec["path"], suggest(trial, spec))
+    return params
+
+
+# --------------------------------------------------------------------------- #
+# Running one trial / reading the cost
+# --------------------------------------------------------------------------- #
+def get_base_params(args):
+    if args.navigator:
+        from nav2_profiles.navigator_utils import get_navigator_yaml
+
+        rendered = get_navigator_yaml(args.navigator)
+        print(f"Base params rendered from navigator '{args.navigator}': {rendered}")
+        return load_yaml(str(rendered))
+    print(f"Base params from file: {args.base_params}")
+    return load_yaml(args.base_params)
+
+
+def find_outcomes_file(results_root, algorithm_name, scenario):
+    """Locate ``<algorithm>_outcomes.csv`` under the results tree (§5)."""
+    pattern = os.path.join(
+        results_root, "**", algorithm_name, scenario, f"{algorithm_name}_outcomes.csv"
     )
+    matches = glob.glob(pattern, recursive=True)
+    if not matches:
+        # fall back to any *_outcomes.csv for that algorithm/scenario
+        pattern = os.path.join(
+            results_root, "**", algorithm_name, scenario, "*_outcomes.csv"
+        )
+        matches = glob.glob(pattern, recursive=True)
+    if not matches:
+        raise FileNotFoundError(
+            f"No outcomes.csv found under {results_root} for "
+            f"algorithm='{algorithm_name}' scenario='{scenario}'."
+        )
+    # newest wins (a resumed study may have stale files)
+    return max(matches, key=os.path.getmtime)
 
-    params = substitute_controller_params(original_param_dict, param_dict)
-    # Save parameters to YAML
-    with open("/tmp/nav2_params.yaml", "w") as f:
-        # yaml.dump({"controller_server": {"ros__parameters": param_dict}}, f)
+
+def compute_cost(outcomes_file, objectives, min_success_rate):
+    """Aggregate metrics over runs; apply a failure penalty (§7.3)."""
+    df = pd.read_csv(outcomes_file)
+
+    success_mask = df["result"].astype(str).str.lower().str.startswith("success")
+    success_rate = success_mask.mean() if len(df) else 0.0
+    print(f"Success rate: {success_rate:.2f} over {len(df)} runs ({outcomes_file})")
+
+    if success_rate < min_success_rate:
+        print(f"Below min success rate {min_success_rate}; returning penalty.")
+        return tuple(
+            PENALTY if direction == "minimize" else -PENALTY
+            for _name, _column, direction, _weight in objectives
+        )
+
+    # average over successful runs only (failed runs have meaningless metrics)
+    good = df[success_mask] if success_mask.any() else df
+    costs = []
+    for name, column, direction, _weight in objectives:
+        if column not in good.columns:
+            raise KeyError(
+                f"Objective '{name}' -> column '{column}' not in {outcomes_file}. "
+                f"Available: {list(good.columns)}"
+            )
+        value = float(good[column].mean())
+        print(f"  {name} ({column}, {direction}): {value:.4f}")
+        costs.append(value)
+    return tuple(costs)
+
+
+def run_experiment(args, params, algorithm_name, objectives):
+    os.makedirs("/tmp", exist_ok=True)
+    params_path = f"/tmp/nav2_params_{algorithm_name}.yaml"
+    with open(params_path, "w") as f:
         yaml.dump(params, f)
 
-    # Launch your ROS2 stack (simulate this step)
-    result = subprocess.run(
-        [
-            "ros2",
-            "gazeboexp",
-            "run",
-            "social_nav",  # TODO: change this to a parameter
-            "--hunav-eval",
-            "--headless",
-            "--no-rviz",
-            "--base-path-for-results",
-            "/workspaces/hunavsim_ws/optuna_studies/gazebo_test",
-            "--algorithm-name",
-            "test_algorithm",  # TODO: change this to a parameter
-            # "--evaluation-metrics-file",
-            "--nav-params",
-            "/tmp/nav2_params.yaml",
-        ],
-        stdout=subprocess.PIPE,
-    )
-    result.check_returncode()  # Ensure the command was successful
+    cmd = [
+        "ros2", "gazeboexp", "run", args.scenario,
+        "--hunav-eval", "--headless", "--no-rviz",
+        "--base-path-for-results", args.results_root,
+        "--algorithm-name", algorithm_name,
+        "--nav-params", params_path,
+    ]
+    print("Running:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
 
-    # Simulate reading a metric (e.g., path length or goal reached)
-    cost = parse_output_for_cost(result.stdout.decode())
-    return cost
+    outcomes_file = find_outcomes_file(args.results_root, algorithm_name, args.scenario)
+    return compute_cost(outcomes_file, objectives, args.min_success_rate)
 
 
-def get_suggested_params(trial, weight_ranges):
-    return {
-        key: trial.suggest_float(key, val["min"], val["max"])
-        for key, val in weight_ranges.items()
-    }
+# --------------------------------------------------------------------------- #
+# Optuna wiring
+# --------------------------------------------------------------------------- #
+def make_objective(args, base_params, search_space, objectives):
+    def objective(trial):
+        algorithm_name = f"{args.study_name}_t{trial.number}_{uuid.uuid4().hex[:6]}"
+        params = build_params(trial, base_params, search_space)
+        return run_experiment(args, params, algorithm_name, objectives)
+
+    return objective
 
 
-def parse_parameters_to_optimize(trial, file_path):
-    # Load the parameters to optimize from the specified file
-    to_optimize = load_params_from_file(file_path)
-    # create a dictionary with the trials parameters
-    weight_ranges = (
-        to_optimize.get("FollowPath", {}).get("optimizer", {}).get("weights", {})
-    )
-    # if the weight_ranges is empty, raise an error
-    # return the ranges for each parameter
-    suggested_params = get_suggested_params(trial, weight_ranges)
-    return suggested_params
-
-
-def objective(trial):
-    params = parse_parameters_to_optimize(trial, params_to_optimize_file)
-    return run_experiment(params)
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--scenario", default="social_nav",
+                   help="gazebo_test scenario to run each trial on.")
+    p.add_argument("--navigator", default=None,
+                   help="Navigator name to render as the base params "
+                        "(e.g. MPC_enlarged_state). Overrides --base-params.")
+    p.add_argument("--base-params", default=os.path.join(CONFIG_DIR, "nav2_params.yaml"),
+                   help="Static base nav2_params.yaml (used if --navigator unset).")
+    p.add_argument("--search-space", default=os.path.join(CONFIG_DIR, "params_to_optimize.yaml"),
+                   help="Search-space YAML (path-based or legacy format).")
+    p.add_argument("--objectives", default=os.path.join(CONFIG_DIR, "objectives.yaml"))
+    p.add_argument("--results-root", default="/workspaces/hunavsim_ws/optuna_studies/gazebo_test")
+    p.add_argument("--study-name", default="gazebo_test_study")
+    p.add_argument("--storage", default="sqlite:///gazebo_test_study.db")
+    p.add_argument("--n-trials", type=int, default=2)
+    p.add_argument("--min-success-rate", type=float, default=0.5,
+                   help="Trials below this success rate get a penalty (§7.3).")
+    return p.parse_args()
 
 
 def main():
+    args = parse_args()
+
+    search_space = load_search_space(args.search_space)
+    objectives = load_objectives(args.objectives)
+    base_params = get_base_params(args)
+
+    directions = [direction for *_, direction, _ in objectives]
+    print("Active objectives:", [(n, d) for n, _c, d, _w in objectives])
+    print("Search space:", [s["path"] for s in search_space])
+
     study = optuna.create_study(
-        directions=["minimize", "minimize", "minimize"],
-        study_name="gazebo_test_study",
-        storage="sqlite:///gazebo_test_study.db",
+        directions=directions,
+        study_name=args.study_name,
+        storage=args.storage,
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=2)
+    study.optimize(
+        make_objective(args, base_params, search_space, objectives),
+        n_trials=args.n_trials,
+    )
 
-    print("Best value:", study.best_values)
-    print("Best trial number:", study.best_trials)
+    print("\nPareto-optimal trials:")
+    for t in study.best_trials:
+        print(f"  trial {t.number}: values={t.values} params={t.params}")
 
 
 if __name__ == "__main__":

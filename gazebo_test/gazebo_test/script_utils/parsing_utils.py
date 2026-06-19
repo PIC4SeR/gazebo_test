@@ -56,6 +56,8 @@ def parse_experiment_name(experiment_name: str) -> Dict:
     goals_and_poses = experiment["goals_and_poses"]
     world_pkg_name = experiment["world_pkg_name"]
     camera_config_file = experiment.get("camera_config_file", None)
+    robot_config_file = experiment.get("robot_config_file", None)
+    robot_config_pkg_name = experiment.get("robot_config_pkg_name", experiment_pkg_name)
 
     world_pkg_path = os.path.join(
         get_package_share_directory(world_pkg_name),
@@ -112,6 +114,30 @@ def parse_experiment_name(experiment_name: str) -> Dict:
             raise FileNotFoundError(
                 f"Camera configuration file {camera_config_path} does not exist."
             )
+
+    # Optional robot/simulator render variables (e.g. odom_topic, bt_xml_pkg)
+    # fed to the nav2_profiles template renderer. Absent file => sim defaults.
+    render_vars: Dict = {}
+    if robot_config_file:
+        robot_config_path = robot_config_file
+        if not os.path.isabs(robot_config_path):
+            robot_config_path = os.path.join(
+                get_package_share_directory(robot_config_pkg_name),
+                "config",
+                robot_config_file,
+            )
+        if not os.path.exists(robot_config_path):
+            raise FileNotFoundError(
+                f"Robot configuration file {robot_config_path} does not exist."
+            )
+        with open(robot_config_path, "r") as f:
+            loaded = yaml.safe_load(f) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError(
+                f"Robot configuration file {robot_config_path} must contain a mapping."
+            )
+        render_vars = loaded
+
     return {
         "world": world,
         "map": map,
@@ -120,6 +146,7 @@ def parse_experiment_name(experiment_name: str) -> Dict:
         "world_pkg_name": world_pkg_name,
         "agents_pkg_name": agents_pkg_name,
         "camera_config_file": camera_config_path,
+        "render_vars": render_vars,
         "additional_launch_files": experiment.get("additional_launch_files", []),
         "navigation_launch": experiment.get(
             "navigation_launch",

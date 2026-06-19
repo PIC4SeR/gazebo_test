@@ -11,6 +11,7 @@
 
   <depend>gazebo_sim</depend>
   <depend>nav2_bringup</depend>
+  <depend>nav2_profiles</depend>
   <depend>rclpy</depend>
   <depend>std_srvs</depend>
   <depend>gazebo_msgs</depend>

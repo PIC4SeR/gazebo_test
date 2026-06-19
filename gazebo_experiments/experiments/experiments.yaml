@@ -21,6 +21,16 @@ experiments:
 #   arguments:
 #     map: "{map}"
 #     params_file: "{params_file}"
+#
+# Optional robot/simulator render overrides passed to the nav2_profiles template
+# renderer (a YAML mapping). Resolved against robot_config_pkg_name/config/ when
+# the path is relative; defaults to the experiment package. Omit to use the
+# gazebo_test sim defaults (odom_topic=jackal/ground_truth, bt_xml_pkg=gazebo_test).
+# robot_config_file: robot_configs/my_robot.yaml
+# robot_config_pkg_name: my_pkg   # optional; defaults to the experiment package
+#   # my_robot.yaml contents, e.g.:
+#   #   odom_topic: /odometry/filtered
+#   #   bt_xml_pkg: my_bt_pkg
 
 social_nav:
   goals_and_poses:

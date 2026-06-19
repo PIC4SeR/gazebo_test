@@ -168,20 +168,22 @@ def _expand_launch_placeholders(
     return launch_command.format_map(_LaunchFormatValues(replacements))
 
 
-def _resolve_navigation_params(args: argparse.Namespace) -> str:
+def _resolve_navigation_params(
+    args: argparse.Namespace, render_vars: Optional[Dict] = None
+) -> str:
     navigator_path = None
     if args.nav_params:
         if args.navigator is not None:
             warnings.warn(
                 "Both navigation parameters file and navigator specified. Using the navigator to generate the parameters file."
             )
-            navigator_path = get_navigator_yaml(args.navigator)
+            navigator_path = get_navigator_yaml(args.navigator, render_vars=render_vars)
         else:
             print(f"Using navigation parameters file: {args.nav_params} (ignoring navigator)")
             navigator_path = args.nav_params
     elif args.navigator:
         print(f"Using navigator: {args.navigator} to generate the parameters file")
-        navigator_path = get_navigator_yaml(args.navigator)
+        navigator_path = get_navigator_yaml(args.navigator, render_vars=render_vars)
         print(f"Generated navigation parameters file at: {navigator_path}")
     else:
         print(
@@ -545,7 +547,7 @@ def run(args: argparse.Namespace):
         )
 
     ros_domain_id, gazebo_uri = isolate_experiment(args.ros_domain_id)
-    navigator_path = _resolve_navigation_params(args)
+    navigator_path = _resolve_navigation_params(args, experiment_dict.get("render_vars"))
     navigation_backend = _normalize_navigation_backend(
         args.navigation_backend
         or ("action" if args.no_navigation_launch or configured_navigation_launch else "nav2")
@@ -729,6 +731,10 @@ def run(args: argparse.Namespace):
             if watchdog_required_nodes is not None
             else ""
         )
+        # Record the navigation config used in the results provenance.
+        nav_params_file_arg = (
+            f"nav_params_file:={navigator_path}" if navigator_path else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
@@ -741,6 +747,7 @@ def run(args: argparse.Namespace):
                 {resume_checkpoint} \
                 {navigation_backend_arg} \
                 {watchdog_required_nodes_arg} \
+                {nav_params_file_arg} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
         print("Started gazebo test")
