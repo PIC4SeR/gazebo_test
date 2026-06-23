@@ -9,10 +9,13 @@ Generalized per docs/optuna_parameter_tuning.md §4 + §7:
   ``FollowPath.optimizer.weights`` format is still accepted for back-compat.
 * Base params come from the rendered navigator YAML (``get_navigator_yaml``)
   when ``--navigator`` is given, else from a static ``nav2_params.yaml``.
-* Objectives (active set + directions + weights) are read from
-  ``objectives.yaml`` instead of being hard-coded.
+* Objectives are COMPOSITE and config-driven (``objectives.yaml``): each is a
+  weighted average of normalized components, so navigation (path/time) and
+  social (work / spacing / intrusions) collapse to two comparable scalars.
+* Failures are handled with HARD + SOFT constraints (collision = infeasible,
+  timeout = soft budget) via a constrained NSGA-II sampler — not a flat penalty.
 * Cost is read from ``<algorithm>_outcomes.csv`` (the merged source of truth),
-  aggregated over experiment_tag × run_id, with explicit failure handling.
+  aggregated over experiment_tag × run_id.
 """
 
 import argparse
@@ -29,17 +32,22 @@ from ament_index_python.packages import get_package_share_directory
 
 CONFIG_DIR = os.path.join(get_package_share_directory("gazebo_optimization"), "config")
 
-# Large finite penalty for failed trials (§7.3). Finite (not inf) keeps NSGA-II
-# / TPE samplers well-behaved.
+# Large finite cost when a trial has NO successful runs to aggregate (the
+# constraints below already mark it infeasible; this just keeps objective values
+# finite so the sampler stays well-behaved).
 PENALTY = 1.0e6
 
-# objectives.yaml uses intent names; the hunav evaluator writes slightly
-# different column names into outcomes.csv. Map intent -> actual column, with a
-# fallback to the name itself when it already matches.
-METRIC_COLUMN_ALIASES = {
-    "social_work_step": "social_work",
-    "avg_speed": "avg_robot_linear_speed",
-    "personal_space_violation": "personal_space_intrusions",
+# Avoid division blow-ups when a `maximize` component (e.g. distance) is ~0.
+EPS = 1.0e-6
+
+# nav2_profiles template render variables for the gazebo_test sim. Without these
+# the navigator renders with simulator-neutral defaults (odom_topic=odom and NO
+# custom behaviour-tree XMLs), so bt_navigator falls back to nav2's stock BT,
+# which needs a `spin` recovery server the gazebo_test bringup doesn't provide ->
+# "Action server spin not available" -> the nav stack aborts. Match the runner.
+DEFAULT_RENDER_VARS = {
+    "odom_topic": "jackal/ground_truth",
+    "bt_xml_pkg": "gazebo_test",
 }
 
 
@@ -62,7 +70,6 @@ def load_search_space(file_path):
     if isinstance(data, dict) and "parameters" in data:
         return data["parameters"]
 
-    # Legacy format: FollowPath.optimizer.weights.<key>: {min, max}
     weights = (
         (data or {}).get("FollowPath", {}).get("optimizer", {}).get("weights", {})
     )
@@ -79,19 +86,37 @@ def load_search_space(file_path):
 
 
 def load_objectives(file_path):
-    """Return ordered ``[(name, column, direction, weight)]`` for active objectives."""
+    """Return ``(objectives, constraints)``.
+
+    ``objectives``  -> ordered ``[{name, direction, components:[...]}]``
+    ``constraints`` -> ordered ``[{name, failure_values, max_rate}]``
+    """
     data = load_yaml(file_path) or {}
+
     objectives = []
     for name, cfg in (data.get("objectives") or {}).items():
         cfg = cfg or {}
-        if not cfg.get("active"):
-            continue
-        column = METRIC_COLUMN_ALIASES.get(name, name)
-        direction = "minimize" if cfg.get("minimize", True) else "maximize"
-        objectives.append((name, column, direction, float(cfg.get("weight", 1.0))))
+        objectives.append(
+            {
+                "name": name,
+                "direction": cfg.get("direction", "minimize"),
+                "components": cfg.get("components", []),
+            }
+        )
     if not objectives:
-        raise ValueError(f"No active objectives in {file_path}.")
-    return objectives
+        raise ValueError(f"No objectives in {file_path}.")
+
+    constraints = []
+    for name, cfg in (data.get("constraints") or {}).items():
+        cfg = cfg or {}
+        constraints.append(
+            {
+                "name": name,
+                "failure_values": cfg.get("failure_values", []),
+                "max_rate": float(cfg.get("max_rate", 0.0)),
+            }
+        )
+    return objectives, constraints
 
 
 # --------------------------------------------------------------------------- #
@@ -123,14 +148,20 @@ def build_params(trial, base_yaml, search_space):
 
 
 # --------------------------------------------------------------------------- #
-# Running one trial / reading the cost
+# Reading the cost from outcomes.csv
 # --------------------------------------------------------------------------- #
 def get_base_params(args):
     if args.navigator:
         from nav2_profiles.navigator_utils import get_navigator_yaml
 
-        rendered = get_navigator_yaml(args.navigator)
-        print(f"Base params rendered from navigator '{args.navigator}': {rendered}")
+        render_vars = dict(DEFAULT_RENDER_VARS)
+        for kv in args.render_var or []:
+            key, _, value = kv.partition("=")
+            render_vars[key.strip()] = value.strip()
+
+        rendered = get_navigator_yaml(args.navigator, render_vars=render_vars)
+        print(f"Base params rendered from navigator '{args.navigator}' "
+              f"(render_vars={render_vars}): {rendered}")
         return load_yaml(str(rendered))
     print(f"Base params from file: {args.base_params}")
     return load_yaml(args.base_params)
@@ -143,7 +174,6 @@ def find_outcomes_file(results_root, algorithm_name, scenario):
     )
     matches = glob.glob(pattern, recursive=True)
     if not matches:
-        # fall back to any *_outcomes.csv for that algorithm/scenario
         pattern = os.path.join(
             results_root, "**", algorithm_name, scenario, "*_outcomes.csv"
         )
@@ -153,42 +183,78 @@ def find_outcomes_file(results_root, algorithm_name, scenario):
             f"No outcomes.csv found under {results_root} for "
             f"algorithm='{algorithm_name}' scenario='{scenario}'."
         )
-    # newest wins (a resumed study may have stale files)
     return max(matches, key=os.path.getmtime)
 
 
-def compute_cost(outcomes_file, objectives, min_success_rate):
-    """Aggregate metrics over runs; apply a failure penalty (§7.3)."""
+def component_series(df, comp):
+    """Per-run series for one component (handles `columns` sum and `per` divide)."""
+    if "columns" in comp:                       # sum several columns row-wise
+        series = sum(df[c] for c in comp["columns"])
+    else:
+        series = df[comp["column"]]
+    if comp.get("per"):                          # normalize per time/step row-wise
+        series = series / df[comp["per"]]
+    return series
+
+
+def composite_value(df, objective):
+    """Weighted average of normalized components -> one scalar cost (lower better)."""
+    total_w = 0.0
+    acc = 0.0
+    for comp in objective["components"]:
+        value = float(component_series(df, comp).mean())
+        baseline = float(comp.get("baseline", 1.0)) or 1.0
+        if comp.get("goal", "minimize") == "maximize":
+            norm = baseline / max(value, EPS)    # bigger value -> lower cost
+        else:
+            norm = value / baseline              # ≈1.0 at baseline
+        weight = float(comp.get("weight", 1.0))
+        acc += weight * norm
+        total_w += weight
+        label = comp.get("name") or comp.get("column") or comp.get("columns")
+        print(f"    {label}: raw={value:.4f} norm={norm:.3f} (w={weight})")
+    return acc / total_w if total_w else acc
+
+
+def failure_rate(df, failure_values):
+    if not len(df):
+        return 1.0
+    return df["result"].astype(str).isin(failure_values).mean()
+
+
+def evaluate(outcomes_file, objectives, constraints):
+    """Return ``(objective_values, constraint_rates)`` for one trial."""
     df = pd.read_csv(outcomes_file)
+    success_mask = df["result"].astype(str).str.startswith("Success")
+    print(
+        f"  {success_mask.mean():.2f} success over {len(df)} runs ({outcomes_file})"
+    )
 
-    success_mask = df["result"].astype(str).str.lower().str.startswith("success")
-    success_rate = success_mask.mean() if len(df) else 0.0
-    print(f"Success rate: {success_rate:.2f} over {len(df)} runs ({outcomes_file})")
+    # Constraints come from ALL runs (failures are the whole point here).
+    rates = {c["name"]: failure_rate(df, c["failure_values"]) for c in constraints}
+    for c in constraints:
+        kind = "hard" if c["max_rate"] == 0.0 else "soft"
+        print(f"  constraint[{kind}] {c['name']}: rate={rates[c['name']]:.2f} "
+              f"(max {c['max_rate']})")
 
-    if success_rate < min_success_rate:
-        print(f"Below min success rate {min_success_rate}; returning penalty.")
-        return tuple(
-            PENALTY if direction == "minimize" else -PENALTY
-            for _name, _column, direction, _weight in objectives
-        )
-
-    # average over successful runs only (failed runs have meaningless metrics)
-    good = df[success_mask] if success_mask.any() else df
-    costs = []
-    for name, column, direction, _weight in objectives:
-        if column not in good.columns:
-            raise KeyError(
-                f"Objective '{name}' -> column '{column}' not in {outcomes_file}. "
-                f"Available: {list(good.columns)}"
-            )
-        value = float(good[column].mean())
-        print(f"  {name} ({column}, {direction}): {value:.4f}")
-        costs.append(value)
-    return tuple(costs)
+    # Objectives are averaged over SUCCESSFUL runs only (failed runs have
+    # meaningless metrics). If none succeeded, return a large finite cost — the
+    # constraints already flag the trial infeasible.
+    good = df[success_mask]
+    if not len(good):
+        print("  no successful runs; objectives -> PENALTY")
+        values = [PENALTY for _ in objectives]
+    else:
+        values = []
+        for obj in objectives:
+            print(f"  objective '{obj['name']}':")
+            values.append(composite_value(good, obj))
+            print(f"    => {obj['name']} = {values[-1]:.4f}")
+    return values, rates
 
 
-def run_experiment(args, params, algorithm_name, objectives):
-    os.makedirs("/tmp", exist_ok=True)
+def run_benchmark(args, params, algorithm_name):
+    """Write params, run one full benchmark, return the outcomes.csv path."""
     params_path = f"/tmp/nav2_params_{algorithm_name}.yaml"
     with open(params_path, "w") as f:
         yaml.dump(params, f)
@@ -200,71 +266,196 @@ def run_experiment(args, params, algorithm_name, objectives):
         "--algorithm-name", algorithm_name,
         "--nav-params", params_path,
     ]
+    if args.exp_config_pkg:
+        cmd += ["--exp-config-pkg", args.exp_config_pkg]
     print("Running:", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, timeout=args.trial_timeout)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        kind = (f"timed out after {args.trial_timeout}s"
+                if isinstance(e, subprocess.TimeoutExpired) else f"exited {e.returncode}")
+        print(f"  benchmark {kind}; tearing down sim.")
+        cleanup_sim()
+        raise
 
-    outcomes_file = find_outcomes_file(args.results_root, algorithm_name, args.scenario)
-    return compute_cost(outcomes_file, objectives, args.min_success_rate)
+    return find_outcomes_file(args.results_root, algorithm_name, args.scenario)
+
+
+def cleanup_sim():
+    """Tear down the tmux session and sim procs a hung/failed run leaves behind.
+
+    gazeboexp drives Gazebo through tmux panes; a hang (or the controlling
+    session suspending) strands the session and its gzserver/nav2 children.
+    """
+    # NOTE: patterns must not match this driver's own command line. Bare 'hunav'
+    # is fatal here because the workspace path (…/hunavsim_devcontainer/…) contains
+    # it, so `pkill -9 -f hunav` would kill the study itself. Use precise tokens;
+    # `tmux kill-server` already SIGHUPs the hunav-eval pane.
+    for c in ("tmux kill-server",
+              "pkill -9 -f 'gzserver|gzclient|component_container|controller_server|hunav_evaluator'"):
+        subprocess.run(c, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def run_experiment(args, params, algorithm_name, objectives, constraints):
+    # Infra failures (hang/timeout, nonzero exit, missing outcomes) prune the
+    # trial so one bad run never stalls or crashes the whole study.
+    try:
+        outcomes_file = run_benchmark(args, params, algorithm_name)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"  trial infrastructure failure ({type(e).__name__}); pruning trial.")
+        raise optuna.TrialPruned()
+    return evaluate(outcomes_file, objectives, constraints)
 
 
 # --------------------------------------------------------------------------- #
-# Optuna wiring
+# Baseline computation (§7.2): run the default config once, fill objectives.yaml
 # --------------------------------------------------------------------------- #
-def make_objective(args, base_params, search_space, objectives):
+def compute_baselines(args, base_params, objectives):
+    """Run the default (un-sampled) config once and return per-component means.
+
+    Returns the baselines in component iteration order — which matches the order
+    the ``baseline:`` lines appear in objectives.yaml.
+    """
+    algorithm_name = f"{args.study_name}_baseline"
+    outcomes_file = run_benchmark(args, base_params, algorithm_name)
+    df = pd.read_csv(outcomes_file)
+    good = df[df["result"].astype(str).str.startswith("Success")]
+    if not len(good):
+        raise RuntimeError(f"Baseline run had no successful runs ({outcomes_file}).")
+    print(f"Baseline over {len(good)}/{len(df)} successful runs ({outcomes_file}):")
+
+    baselines = []
+    for obj in objectives:
+        for comp in obj["components"]:
+            value = float(component_series(good, comp).mean())
+            label = comp.get("name") or comp.get("column") or comp.get("columns")
+            print(f"  {obj['name']}.{label}: {value:.4f}")
+            baselines.append(value)
+    return baselines
+
+
+def update_baselines_in_file(file_path, baselines):
+    """Rewrite each ``baseline:`` line in order, preserving comments/layout."""
+    import re
+
+    pattern = re.compile(r"^(\s*baseline:\s*)([0-9eE+.\-]+)(.*)$")
+    queue = list(baselines)
+    out = []
+    with open(file_path) as f:
+        for line in f:
+            m = pattern.match(line)
+            if m and queue:
+                value = queue.pop(0)
+                line = f"{m.group(1)}{value:g}{m.group(3)}\n"
+            out.append(line)
+    if queue:
+        raise RuntimeError(
+            f"Computed {len(baselines)} baselines but found "
+            f"{len(baselines) - len(queue)} 'baseline:' lines in {file_path}."
+        )
+    with open(file_path, "w") as f:
+        f.writelines(out)
+    print(f"Updated {len(baselines)} baselines in {file_path}.")
+
+
+# --------------------------------------------------------------------------- #
+# Optuna wiring (constrained NSGA-II, §7.3)
+# --------------------------------------------------------------------------- #
+CONSTRAINTS_KEY = "constraints"   # user_attr that constraints_func reads
+
+
+def make_objective(args, base_params, search_space, objectives, constraints):
     def objective(trial):
         algorithm_name = f"{args.study_name}_t{trial.number}_{uuid.uuid4().hex[:6]}"
         params = build_params(trial, base_params, search_space)
-        return run_experiment(args, params, algorithm_name, objectives)
+        values, rates = run_experiment(
+            args, params, algorithm_name, objectives, constraints
+        )
+        # Expose constraint values (rate - max_rate; <=0 is feasible) so the
+        # constrained sampler can read them back.
+        trial.set_user_attr(
+            CONSTRAINTS_KEY,
+            [rates[c["name"]] - c["max_rate"] for c in constraints],
+        )
+        for c in constraints:
+            trial.set_user_attr(f"{c['name']}_rate", rates[c["name"]])
+        return tuple(values)
 
     return objective
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--scenario", default="social_nav",
-                   help="gazebo_test scenario to run each trial on.")
+    p.add_argument("--scenario", default="social_nav")
     p.add_argument("--navigator", default=None,
-                   help="Navigator name to render as the base params "
-                        "(e.g. MPC_enlarged_state). Overrides --base-params.")
-    p.add_argument("--base-params", default=os.path.join(CONFIG_DIR, "nav2_params.yaml"),
-                   help="Static base nav2_params.yaml (used if --navigator unset).")
-    p.add_argument("--search-space", default=os.path.join(CONFIG_DIR, "params_to_optimize.yaml"),
-                   help="Search-space YAML (path-based or legacy format).")
+                   help="Navigator name to render as base params (e.g. MPC_enlarged_state).")
+    p.add_argument("--render-var", action="append", metavar="KEY=VALUE",
+                   help="Override a nav2_profiles render variable when rendering "
+                        "the navigator (repeatable). Defaults: "
+                        "odom_topic=jackal/ground_truth, bt_xml_pkg=gazebo_test.")
+    p.add_argument("--base-params", default=os.path.join(CONFIG_DIR, "nav2_params.yaml"))
+    p.add_argument("--search-space", default=os.path.join(CONFIG_DIR, "params_to_optimize.yaml"))
     p.add_argument("--objectives", default=os.path.join(CONFIG_DIR, "objectives.yaml"))
     p.add_argument("--results-root", default="/workspaces/hunavsim_ws/optuna_studies/gazebo_test")
+    p.add_argument("--exp-config-pkg", default="gazebo_optimization",
+                   help="Package providing config/experiment_config.yaml (repetitions, "
+                        "timeout). Defaults to gazebo_optimization's tuning config "
+                        "(reps=3). Pass '' to use the experiment's own benchmark config.")
     p.add_argument("--study-name", default="gazebo_test_study")
     p.add_argument("--storage", default="sqlite:///gazebo_test_study.db")
     p.add_argument("--n-trials", type=int, default=2)
-    p.add_argument("--min-success-rate", type=float, default=0.5,
-                   help="Trials below this success rate get a penalty (§7.3).")
+    p.add_argument("--trial-timeout", type=float, default=1800.0,
+                   help="Max seconds for one trial's benchmark before it is killed "
+                        "and the trial pruned (guards against Gazebo/tmux hangs). "
+                        "Healthy trials run ~2 min, so 1800s is generous headroom.")
+    p.add_argument("--compute-baselines", action="store_true",
+                   help="Run the default config once, write per-component "
+                        "baselines back into the objectives file, and exit (§7.2).")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    search_space = load_search_space(args.search_space)
-    objectives = load_objectives(args.objectives)
+    objectives, constraints = load_objectives(args.objectives)
     base_params = get_base_params(args)
 
-    directions = [direction for *_, direction, _ in objectives]
-    print("Active objectives:", [(n, d) for n, _c, d, _w in objectives])
+    if args.compute_baselines:
+        baselines = compute_baselines(args, base_params, objectives)
+        update_baselines_in_file(args.objectives, baselines)
+        return
+
+    search_space = load_search_space(args.search_space)
+
+    directions = [obj["direction"] for obj in objectives]
+    print("Objectives:", [(o["name"], o["direction"]) for o in objectives])
+    print("Constraints:", [(c["name"], "hard" if c["max_rate"] == 0 else "soft")
+                           for c in constraints])
     print("Search space:", [s["path"] for s in search_space])
 
+    # Optuna treats a constraint <= 0 as satisfied; a missing attr (trial errored
+    # before evaluation) defaults to infeasible.
+    n_con = len(constraints)
+    sampler = optuna.samplers.NSGAIISampler(
+        constraints_func=lambda t: t.user_attrs.get(CONSTRAINTS_KEY, [1.0] * n_con)
+    )
     study = optuna.create_study(
         directions=directions,
+        sampler=sampler,
         study_name=args.study_name,
         storage=args.storage,
         load_if_exists=True,
     )
     study.optimize(
-        make_objective(args, base_params, search_space, objectives),
+        make_objective(args, base_params, search_space, objectives, constraints),
         n_trials=args.n_trials,
     )
 
-    print("\nPareto-optimal trials:")
+    print("\nPareto-optimal (feasible) trials:")
     for t in study.best_trials:
-        print(f"  trial {t.number}: values={t.values} params={t.params}")
+        rates = {c["name"]: t.user_attrs.get(f"{c['name']}_rate") for c in constraints}
+        print(f"  trial {t.number}: values={t.values} rates={rates}")
+        print(f"    params={t.params}")
 
 
 if __name__ == "__main__":

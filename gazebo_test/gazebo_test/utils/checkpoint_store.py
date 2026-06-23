@@ -221,36 +221,6 @@ class ExperimentCheckpointStore:
         row.update({"status": "RUNNING", "worker_id": worker_id, "updated_at": now_ts})
         return ExperimentJob(**row)
 
-    def get_job(self, descriptor: ExperimentJobDescriptor) -> Optional[ExperimentJob]:
-        params: Dict[str, object] = {
-            "algorithm": descriptor.algorithm,
-            "experiment_identifier": descriptor.experiment_identifier,
-            "experiment_tag": descriptor.experiment_tag,
-            "run_id": descriptor.run_id,
-        }
-        with psycopg.connect(
-            self._dsn,
-            autocommit=True,
-            connect_timeout=self._connect_timeout,
-        ) as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
-                    SELECT id, algorithm, experiment_identifier, experiment_tag, run_id,
-                           status, result, worker_id, updated_at
-                      FROM jobs
-                     WHERE algorithm = %(algorithm)s
-                       AND experiment_identifier = %(experiment_identifier)s
-                       AND experiment_tag = %(experiment_tag)s
-                       AND run_id = %(run_id)s
-                    """,
-                    params,
-                )
-                row = cur.fetchone()
-        if row is None:
-            return None
-        return ExperimentJob(**row)
-
     def has_incomplete_jobs(
         self,
         *,

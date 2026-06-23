@@ -259,14 +259,77 @@ others) into `metrics.csv`; the merged `outcomes.csv` is the single source of tr
 ### 7.3 Handle failures explicitly (most important)
 
 A trial that **collides or times out** has meaningless metric values (short path because
-it never reached the goal looks "good"). Treat the result column from `outcomes.csv`:
+it never reached the goal looks "good"). Treat the `result` column from `outcomes.csv`.
 
-- If any/most runs are `FAILURE_*`, return a large penalty (single-objective) or
-  `float("inf")` per objective (multi-objective), or use `optuna.TrialPruned`.
-- Or use a **constraint**: success-rate ≥ threshold, exposed via
-  `trial.set_user_attr` + a constrained sampler (`NSGAIISampler(constraints_func=...)`).
+**The actual failure taxonomy** (the `result` column has exactly these values, not a
+generic `FAILURE_*`):
 
-Without this, Optuna will happily exploit the failure modes.
+| `result` value | Kind | Severity |
+|---|---|---|
+| `Success` | — | — |
+| `Failure: Collision with agent` | safety-critical (hit a person) | worst |
+| `Failure: Collision with environment` | safety (hit a wall/obstacle) | bad |
+| `Failure: Timeout` | "soft" — robot was navigating, just too cautious/slow | least bad |
+
+Supporting columns let you cross-check the category: `completed`,
+`robot_on_person_collision`, `person_on_robot_collision`, `final_distance_to_target`,
+`time_not_moving`.
+
+**Baseline (binary) handling** — what the driver does today: build a `success_mask`
+(`result` starts with "Success"); if `success_rate < min_success_rate` return one flat
+penalty per objective; otherwise average metrics **over successful runs only** (drop
+failed rows so a 2-second collision can't masquerade as a short, "efficient" path).
+Without at least this, Optuna will happily exploit the failure modes.
+
+#### Handling different failure types differently (recommended)
+
+Because `result` is a clean categorical, the three failures need not be equivalent — a
+collision with a **person** is a different *kind* of bad than being **slow**. Three
+strategies, increasing in fidelity:
+
+**1. Graded penalty by type (simplest).** Map each category to its own magnitude so the
+optimizer learns the ordering instead of a single cliff:
+
+```python
+FAILURE_PENALTY = {
+    "Failure: Collision with agent":       5.0,   # safety-critical, worst
+    "Failure: Collision with environment": 3.0,
+    "Failure: Timeout":                    1.0,   # just too cautious/slow
+}
+# penalty = PENALTY * sum(rate_of_type * mult for type, mult in FAILURE_PENALTY)
+```
+
+A trial failing 50% by timeout now scores far better than one failing 50% by hitting
+people, so the search steers away from the dangerous region rather than treating both as
+equally out-of-bounds.
+
+**2. Constraints, not penalties (cleanest for "collisions must never happen").**
+`NSGAIISampler(constraints_func=...)` lets you separate **hard** from **soft** failures:
+
+```python
+# inside objective(): expose per-type rates
+trial.set_user_attr("collision_rate", collision_rate)
+trial.set_user_attr("timeout_rate", timeout_rate)
+
+def constraints_func(trial):
+    return [trial.user_attrs["collision_rate"],         # ≤ 0 required (hard)
+            trial.user_attrs["timeout_rate"] - 0.3]     # ≤ 0 desired (soft budget)
+```
+
+The sampler prefers feasible trials and ranks infeasible ones by *how much* they
+violate, with collisions and timeouts in **separate** constraint dimensions. With
+constraints you drop the `min_success_rate` gate and let feasibility do the work.
+
+**3. Timeout as a soft failure that still contributes metrics.** A timeout run usually
+has valid trajectory data (it *was* navigating), unlike a collision which truncates
+everything. Keep timeout rows in the average but add a penalty term to
+`time_to_reach_goal`, while still hard-dropping collision rows — squeezing more signal
+out of each expensive trial.
+
+**Recommended combo:** treat **collisions as a hard constraint** (#2) and **timeout as a
+graded soft penalty** (#1). For social navigation a person-collision must be infeasible,
+while slowness is a tunable trade-off. Expose `FAILURE_PENALTY` and the timeout budget as
+config keys (e.g. in `objectives.yaml`) so they're tunable without code changes.
 
 ### 7.4 Aggregation order
 
@@ -283,12 +346,29 @@ with **mean (or worst-case max for robustness)**, after per-scenario normalizati
    structural ints frozen.
 3. Generalize the driver (§4): recursive set-by-path, typed suggestions, config-driven
    objectives, read cost from `outcomes.csv`, failure penalty (§7.3).
-4. **Stage 1:** one multi-objective study per scenario,
-   `directions=["minimize","minimize"]` (time vs social_work), `repetitions ≥ 3`,
-   `n_trials ≈ 15–30 × n_params`.
-5. **Stage 2:** one cross-scenario robustness study over all scenarios, seeded with
+4. **Compute baselines for the scenario** before any study, so the normalized objectives
+   (§7.2) are centred at ≈1.0 on *that* world's default config:
+
+   ```bash
+   ros2 run gazebo_optimization optuna_optimization \
+     --navigator MPC_enlarged_state --scenario crossing --compute-baselines
+   ```
+
+   This runs the default config once and writes the per-component `baseline:` values back
+   into `objectives.yaml`. Re-run it whenever you change scenario — baselines drift per world.
+5. **Stage 1:** one multi-objective study per scenario,
+   `directions=["minimize","minimize"]` (navigation vs social), `repetitions ≥ 3`,
+   `n_trials ≈ 15–30 × n_params`:
+
+   ```bash
+   ros2 run gazebo_optimization optuna_optimization \
+     --navigator MPC_enlarged_state --scenario crossing \
+     --search-space .../config/params_to_optimize_mpc_enlarged_state.yaml \
+     --study-name mpc_es_crossing --n-trials 30
+   ```
+6. **Stage 2:** one cross-scenario robustness study over all scenarios, seeded with
    stage-1 winners; aggregate per §7.4.
-6. Use a persistent `storage="sqlite:///..."` + `load_if_exists=True` (already in the
+7. Use a persistent `storage="sqlite:///..."` + `load_if_exists=True` (already in the
    script) so studies resume — each trial is minutes of sim time.
 
 ### Budget reality

@@ -1,10 +1,8 @@
 from enum import Enum
-import time
 
 from action_msgs.msg import GoalStatus
-from builtin_interfaces.msg import Duration
 
-from geometry_msgs.msg import PoseStamped, Point
+from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from lifecycle_msgs.srv import GetState
 from nav2_msgs.action import ComputePathToPose
@@ -13,15 +11,12 @@ from nav2_msgs.action import (
     NavigateToPose,
 )
 from nav2_msgs.action import SmoothPath
-from nav2_msgs.srv import ClearEntireCostmap, GetCostmap, LoadMap, ManageLifecycleNodes
+from nav2_msgs.srv import ClearEntireCostmap, ManageLifecycleNodes
 
-import rclpy
 from rclpy.action import ActionClient
-from rclpy.duration import Duration as rclpyDuration
 from rclpy.node import Node
 import asyncio
 from rclpy.logging import get_logger
-from typing import Optional
 
 
 class TaskResult(Enum):
@@ -40,12 +35,8 @@ class BasicNavigator:
 
         self.follow_path_goal_handle = None
         self.go_to_pose_goal_handle = None
-        # self.compute_path_to_pose_goal_handle = None
-        # self.smooth_path_goal_handle = None
         self.go_to_pose_result = None
         self.follow_path_result = None
-        # self.compute_path_to_pose_result = None
-        # self.smooth_path_result = None
         self.feedback = None
         self.go_to_pose_status = GoalStatus.STATUS_UNKNOWN
         self.follow_path_status = GoalStatus.STATUS_UNKNOWN
@@ -72,10 +63,6 @@ class BasicNavigator:
         )
         self.logger = get_logger("basic_navigator")
         # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
-
-    def destroyNode(self):
-        """Destroy the node and all action clients."""
-        self.destroy_node()
 
     def destroy_node(self):
         """Destroy the node and all action clients."""
@@ -168,10 +155,6 @@ class BasicNavigator:
         if self.go_to_pose_result:
             future = await self.go_to_pose_goal_handle.cancel_goal_async()
 
-    def getFeedback(self):
-        """Get the pending action feedback message."""
-        return self.feedback
-
     def getResult(self, goal_result: GoalStatus) -> TaskResult:
         """Get the pending action result message
         Returns:
@@ -205,79 +188,6 @@ class BasicNavigator:
         self._loop = loop
         self.logger.debug("Set loop for navigator")
         return
-
-    async def _getPathImpl(self, start, goal, planner_id="", use_start=False):
-        """
-        Send a `ComputePathToPose` action request.
-
-        Internal implementation to get the full result, not just the path.
-        """
-        goal_msg = ComputePathToPose.Goal()
-        goal_msg.start = start
-        goal_msg.goal = goal
-        goal_msg.planner_id = planner_id
-        goal_msg.use_start = use_start
-        self.logger.info("Getting path...")
-        send_goal_future = self.compute_path_to_pose_client.send_goal_async(goal_msg)
-        goal_handle = await send_goal_future
-
-        if not goal_handle.accepted:
-            self.logger.error("Get path was rejected!")
-            return None
-
-        result = await goal_handle.get_result_async()
-        if result.status != GoalStatus.STATUS_SUCCEEDED:
-            self.logger.error(f"Getting path failed with status code: {result.status}")
-            return None
-
-        return result.result
-
-    def getPath(self, start, goal, planner_id="", use_start=False):
-        """Send a `ComputePathToPose` action request."""
-        rtn = self._getPathImpl(start, goal, planner_id, use_start)
-        if not rtn:
-            return None
-        else:
-            return rtn.path
-
-    async def _smoothPathImpl(
-        self, path, smoother_id="", max_duration=2.0, check_for_collision=False
-    ):
-        """
-        Send a `SmoothPath` action request.
-
-        Internal implementation to get the full result, not just the path.
-        """
-
-        goal_msg = SmoothPath.Goal()
-        goal_msg.path = path
-        goal_msg.max_smoothing_duration = rclpyDuration(seconds=max_duration).to_msg()
-        goal_msg.smoother_id = smoother_id
-        goal_msg.check_for_collisions = check_for_collision
-        self.logger.info("Smoothing path...")
-        goal_handle = await self.smoother_client.send_goal_async(goal_msg)
-
-        if not goal_handle.accepted:
-            self.logger.error("Smooth path was rejected!")
-            return None
-
-        result = await goal_handle.get_result_async()
-
-        if result.status != GoalStatus.STATUS_SUCCEEDED:
-            self.logger.error(f"Getting path failed with status code: {result.status}")
-            return None
-
-        return result.result
-
-    def smoothPath(
-        self, path, smoother_id="", max_duration=2.0, check_for_collision=False
-    ):
-        """Send a `SmoothPath` action request."""
-        rtn = self._smoothPathImpl(path, smoother_id, max_duration, check_for_collision)
-        if not rtn:
-            return None
-        else:
-            return rtn.path
 
     async def clearAllCostmaps(self):
         """Clear all costmaps."""

@@ -1,21 +1,74 @@
-objectives:  
-  time_to_reach_goal: 
-    weight: 1.0
-    active: 
-    minimize: true
-  social_work_step:
-    weight: 1.0
-    active: true
-    minimize: true
-  path_length: 
-    weight: 1.0
-    active: true
-    minimize: true
-  avg_speed: 
-    weight: 1.0
-    active: true
-    minimize: true
-  personal_space_violation:
-    weight: 1.0
-    active: true
-    minimize: true
+# Multi-objective definition for the gazebo_test Optuna study.
+#
+# TWO composite objectives (navigation efficiency vs social comfort) — the
+# canonical social-nav trade-off and a clean 2D Pareto front (docs §7.2).
+#
+# Each objective is a weighted average of NORMALIZED components. A component is
+# divided by its `baseline` (the default-config mean), so terms with different
+# units/scales are comparable and ≈1.0 at baseline. For `goal: maximize`
+# components the normalization is inverted (baseline/value) so EVERY term is a
+# cost where lower = better; the composite direction is therefore `minimize`.
+#
+# Baselines below are means over the default MPC_enlarged_state SUCCESSFUL runs.
+# Refresh them per scenario by running the default config once (docs §7.2) — they
+# drift between worlds.
+
+objectives:
+
+  # --- Navigation performance: path length + time to goal -------------------
+  navigation:
+    direction: minimize
+    components:
+      - column: path_length
+        goal: minimize
+        weight: 1.0
+        baseline: 8.67637        # m
+      - column: time_to_reach_goal
+        goal: minimize
+        weight: 1.0
+        baseline: 16.5312        # s
+
+  # --- Social comfort: social work + spacing + space intrusions -------------
+  # The three terms are correlated (|r| 0.6-0.8 in the data) so weights, not
+  # equal triple-counting: social_work is the dynamic SFM-effort signal, space
+  # intrusions the discrete violation count, avg distance the general spacing
+  # (down-weighted, mostly captured by the other two).
+  social:
+    direction: minimize
+    components:
+      - name: social_work_per_step
+        column: social_work
+        per: time_to_reach_goal          # row-wise divide -> per-second (∝ per-step)
+        goal: minimize
+        weight: 1.0
+        baseline: 9.53443
+      - name: closest_person_distance
+        column: avg_distance_to_closest_person
+        goal: maximize                   # larger gap is better -> inverted to a cost
+        weight: 0.5
+        baseline: 1.09392                   # m
+      - name: space_intrusions
+        columns:                         # summed row-wise
+          - intimate_space_intrusions
+          - personal_space_intrusions
+        goal: minimize
+        weight: 1.0
+        baseline: 65.8289
+
+# Failure handling via HARD + SOFT constraints (docs §7.3). Rates are derived
+# from the `result` column and fed to a constrained sampler (NSGAIISampler).
+# A constraint is satisfied when rate <= max_rate.
+constraints:
+  # HARD: any collision (with a person or the environment) makes the trial
+  # infeasible. People-collisions must never be traded for efficiency.
+  collision:
+    failure_values:
+      - "Failure: Collision with agent"
+      - "Failure: Collision with environment"
+    max_rate: 0.0
+  # SOFT: timeouts are tolerated up to a budget — being slow/cautious is a
+  # trade-off, not a safety failure.
+  timeout:
+    failure_values:
+      - "Failure: Timeout"
+    max_rate: 0.3

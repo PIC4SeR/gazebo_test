@@ -134,14 +134,7 @@ def _normalize_navigation_launch(raw_launch_file: Any, source: str) -> Optional[
 
 
 def _dedupe_preserving_order(values: List[str]) -> List[str]:
-    deduped = []
-    seen = set()
-    for value in values:
-        if value in seen:
-            continue
-        deduped.append(value)
-        seen.add(value)
-    return deduped
+    return list(dict.fromkeys(values))
 
 
 def _launch_window_name(launch_command: str) -> str:
