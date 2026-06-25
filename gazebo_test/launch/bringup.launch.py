@@ -16,11 +16,15 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 
+import yaml
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     GroupAction,
     IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
     SetEnvironmentVariable,
 )
 from launch.conditions import IfCondition
@@ -50,12 +54,18 @@ class LaunchArguments(LaunchArgumentsBase):
     use_composition: DeclareLaunchArgument = NavigationArgs.use_composition
     use_respawn: DeclareLaunchArgument = NavigationArgs.use_respawn
     log_level: DeclareLaunchArgument = NavigationArgs.log_level
+    robots: DeclareLaunchArgument = DeclareLaunchArgument(
+        "robots",
+        default_value="",
+        description="YAML/JSON-encoded list of robots, e.g. "
+        "\"[{name: r0, nav2_params: r0.yaml}]\". When non-empty, bring up one "
+        "namespaced Nav2 stack per robot (each may declare its own "
+        "'nav2_params'). Empty = bring up a single stack under 'namespace'.",
+    )
 
 
-def generate_launch_description():
-    # Get the launch directory
-
-    # Create the launch configuration variables
+def _single_bringup_group():
+    """The single-stack Nav2 bringup (one namespace)."""
     namespace = LaunchConfiguration("namespace")
     use_namespace = LaunchConfiguration("use_namespace")
     map = LaunchConfiguration("map")
@@ -97,10 +107,6 @@ def generate_launch_description():
         allow_substs=True,
     )
 
-    stdout_linebuf_envvar = SetEnvironmentVariable(
-        "RCUTILS_LOGGING_BUFFERED_STREAM", "1"
-    )
-
     # Specify the actions
     bringup_cmd_group = GroupAction(
         [
@@ -133,18 +139,48 @@ def generate_launch_description():
             ),
         ]
     )
+    return bringup_cmd_group
 
-    # Create the launch description and populate
+
+def _bringup(context, *args, **kwargs):
+    """Bring up one Nav2 stack, or one per robot when a 'robots' list is given."""
+    robots_arg = LaunchConfiguration("robots").perform(context).strip()
+    fleet = yaml.safe_load(robots_arg) if robots_arg else []
+    if not isinstance(fleet, list):
+        raise ValueError("'robots' must decode to a list of robot mappings")
+
+    if not fleet:
+        return [_single_bringup_group()]
+
+    # Fleet path: re-enter this launch file once per namespaced robot. Each child
+    # gets robots="" so it takes the single-stack path.
+    default_params = LaunchConfiguration("params_file").perform(context)
+    map_yaml = LaunchConfiguration("map").perform(context)
+    use_sim_time = LaunchConfiguration("use_sim_time").perform(context)
+    actions = [LogInfo(msg=f"Bringing up Nav2 for {len(fleet)} robots")]
+    for robot in fleet:
+        actions.append(
+            include_scoped_launch_py_description(
+                pkg_name="gazebo_test",
+                paths=["launch", "bringup.launch.py"],
+                launch_arguments={
+                    "namespace": str(robot["name"]),
+                    "use_namespace": "true",
+                    "map": map_yaml,
+                    "params_file": str(robot.get("nav2_params") or default_params),
+                    "use_sim_time": use_sim_time,
+                    "robots": "",
+                },
+            )
+        )
+    return actions
+
+
+def generate_launch_description():
     ld = LaunchDescription()
-
-    # Set environment variables
-    ld.add_action(stdout_linebuf_envvar)
-
-    # Declare the launch options
-    launch_arguments = LaunchArguments()
-    launch_arguments.add_to_launch_description(ld)
-
-    # Add the actions to launch all of the navigation nodes
-    ld.add_action(bringup_cmd_group)
-
+    ld.add_action(
+        SetEnvironmentVariable("RCUTILS_LOGGING_BUFFERED_STREAM", "1")
+    )
+    LaunchArguments().add_to_launch_description(ld)
+    ld.add_action(OpaqueFunction(function=_bringup))
     return ld

@@ -71,6 +71,8 @@ def launch_setup(context, *args, **kwargs):
             parameters,
             # Navigation config file used, recorded in the results provenance.
             {"nav_params_file": LaunchConfiguration("nav_params_file").perform(context)},
+            # Selects the experiment task (go_to_pose | multirobot | ...).
+            {"task": LaunchConfiguration("task").perform(context)},
         ],
     )
     return [node]
@@ -87,6 +89,14 @@ def generate_launch_description():
             "nav_params_file",
             default_value="",
             description="Navigation parameters/config file used (recorded for provenance).",
+        )
+    )
+    ld.add_action(
+        DeclareLaunchArgument(
+            "task",
+            default_value="go_to_pose",
+            description="Experiment task: 'go_to_pose' (single robot) or "
+            "'multirobot' (fleet).",
         )
     )
     ld.add_action(OpaqueFunction(function=launch_setup))

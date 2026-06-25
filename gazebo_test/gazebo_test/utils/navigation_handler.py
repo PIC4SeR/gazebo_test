@@ -21,12 +21,15 @@ class NavigationHandler:
         node: Node,
         navigation_result_callback=None,
         backend: str = "nav2",
+        namespace: str = "",
     ) -> None:
         self.node = node
         self._loop = None
+        self.namespace = namespace.strip("/")
         self.backend = self._normalize_backend(backend)
         self.navigator = BasicNavigator(
             node=self.node,
+            namespace=self.namespace,
         )
         self.logger = rclpy.logging.get_logger("navigation_handler")
         # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)

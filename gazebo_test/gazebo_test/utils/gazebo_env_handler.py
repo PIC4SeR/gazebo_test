@@ -270,6 +270,45 @@ class GazeboEnvironmentHandler:
 
         return True
 
+    async def reset_environment_for_experiment_multi(
+        self, entities: List[EntityState], goal_entities: List[EntityState], goal_xml: str
+    ) -> bool:
+        """Multi-robot variant of reset_environment_for_experiment.
+
+        Resets all robots to their initial states and respawns one goal box per
+        robot (goal_entities carry distinct names, e.g. ``goal_box_<robot>``).
+        """
+        self.logger.debug("Resetting Gazebo environment (multi-robot)")
+        if not await self.pause_gazebo():
+            self.logger.error("Failed to pause Gazebo environment")
+            return False
+
+        goal_names = [g.name for g in goal_entities]
+        while await self.check_entities_in_world(goal_names):
+            for name in goal_names:
+                await self.delete_entity(name)
+
+        if not await self.reset_the_world():
+            self.logger.error("Failed to reset Gazebo environment")
+            return False
+        if not await self.set_entities_state(entities):
+            self.logger.error("Failed to set entities state")
+            return False
+
+        for goal in goal_entities:
+            while not await self.check_entities_in_world([goal.name]):
+                await self.spawn_entity(
+                    entity_name=goal.name,
+                    entity_xml=goal_xml,
+                    initial_pose=goal.pose,
+                )
+        if not await self.resume_gazebo():
+            self.logger.error("Failed to resume Gazebo environment")
+            return False
+        await asyncio.sleep(0.5)
+        self.logger.debug("Experiment reset successfully (multi-robot)")
+        return True
+
     async def get_entity_state(
         self,
         entity_name: str,

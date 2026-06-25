@@ -27,18 +27,27 @@ def path_to_file_in_pkg(
     return PathJoinSubstitution([FindPackageShare(pkg_name)] + paths)
 
 
-def map_to_odom_identity(use_sim_time: SomeSubstitutionsType) -> Node:
+def map_to_odom_identity(
+    use_sim_time: SomeSubstitutionsType, namespace: str = ""
+) -> Node:
     """
     Return a Node that publishes the identity transform from map to odom.
     This is used to make the map frame the same as the odom frame.
+
+    When ``namespace`` is given the node is pushed into that namespace and /tf is
+    remapped so the transform lands on /<namespace>/tf (matching the namespaced
+    robot + Nav2 stack).
     """
+    namespace = namespace.strip("/")
     return Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="map_to_odom",
+        namespace=namespace,
         output="screen",
         parameters=[{"use_sim_time": use_sim_time}],
         arguments=["--frame-id", "map", "--child-frame-id", "odom"],
+        remappings=[("/tf", "tf"), ("/tf_static", "tf_static")] if namespace else [],
     )
 
 

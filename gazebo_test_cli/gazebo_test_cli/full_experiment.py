@@ -9,6 +9,7 @@ the ros2cli command extension (``ros2 gazeboexp``).
 
 import argparse
 import textwrap
+import yaml
 import libtmux
 from libtmux.exc import LibTmuxException
 import os
@@ -191,8 +192,36 @@ def _resolve_navigation_params(
     return str(navigator_path)
 
 
-def _default_navigation_launch_command(map_path: str, params_file: str) -> str:
-    return f"gazebo_test bringup.launch.py map:={map_path} params_file:={params_file}"
+def _default_navigation_launch_command(
+    map_path: str, params_file: str, robots_arg: str = "", lone_robot: str = "jackal"
+) -> str:
+    cmd = f"gazebo_test bringup.launch.py map:={map_path} params_file:={params_file}"
+    if robots_arg:
+        # Fleet: bringup loops one namespaced stack per robot.
+        cmd += " " + shlex.quote(f"robots:={robots_arg}")
+    else:
+        # Lone robot runs under its own namespace so it matches the now-namespaced
+        # spawn / plugins.
+        cmd += f" namespace:={lone_robot} use_namespace:=true"
+    return cmd
+
+
+def _load_fleet_robots(goals_and_poses_path: str) -> list:
+    """Return the 'robots' list from a goals/poses YAML, or [] if single-robot."""
+    try:
+        with open(goals_and_poses_path, "r") as f:
+            return yaml.safe_load(f).get("robots") or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _load_lone_robot_name(goals_and_poses_path: str) -> str:
+    """Return the single-robot 'robot_name' from a goals/poses YAML."""
+    try:
+        with open(goals_and_poses_path, "r") as f:
+            return str(yaml.safe_load(f).get("robot_name") or "jackal")
+    except Exception:  # noqa: BLE001
+        return "jackal"
 
 
 def _default_watchdog_nodes_for_backend(
@@ -407,6 +436,15 @@ def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
             "Use 'none' to disable node checks."
         ),
     )
+    run_parser.add_argument(
+        "--task",
+        action="store",
+        default=None,
+        help=(
+            "Experiment task (go_to_pose | multirobot | ...). Overrides the "
+            "experiment's declared 'task'; defaults to go_to_pose."
+        ),
+    )
 
     # YAML/params path arguments complete to *.yaml files.
     _yaml_completer = FilesCompleter(("yaml", "yml"), directories=True)
@@ -444,6 +482,28 @@ def run(args: argparse.Namespace):
     world = experiment_dict.get("world", "")
     map = experiment_dict.get("map", "")
     goals_and_poses = experiment_dict.get("goals_and_poses", "")
+    # Task selects the experiment behaviour (go_to_pose | multirobot | ...).
+    # CLI --task overrides the experiment's declared task.
+    task = (args.task or experiment_dict.get("task") or "go_to_pose").strip()
+
+    # For a fleet task, load the robots list once and encode it for the launch
+    # files. HuNav tracks one robot socially, so robot_name is pinned to the
+    # first robot; its name must be a valid model id (e.g. "jackal") since
+    # robot_name doubles as the model selector. The rest are dynamic obstacles.
+    fleet_robots = _load_fleet_robots(goals_and_poses) if task == "multirobot" else []
+    robots_arg = (
+        yaml.safe_dump(fleet_robots, default_flow_style=True).strip()
+        if fleet_robots
+        else ""
+    )
+    # The primary robot's name doubles as its namespace. Fleet -> first robot;
+    # lone robot -> the goals/poses 'robot_name'. Threaded to spawn (robot_name),
+    # the lone Nav2 bringup (namespace), and HuNav (tracked robot).
+    primary_robot = (
+        str(fleet_robots[0]["name"])
+        if fleet_robots
+        else _load_lone_robot_name(goals_and_poses)
+    )
     agents_configuration_file = experiment_dict.get("agents_configuration_file", "")
     world_pkg_name = experiment_dict.get("world_pkg_name", "")
     agents_pkg_name = experiment_dict.get("agents_pkg_name", "")
@@ -573,7 +633,10 @@ def run(args: argparse.Namespace):
             navigation_launch_command = _default_navigation_launch_command(
                 map,
                 navigator_path,
+                robots_arg,
+                primary_robot,
             )
+    print(f"Experiment task: {task}")
     print(f"Experiment manager navigation backend: {navigation_backend}")
     if navigation_launch_command:
         print(f"Navigation launch command: ros2 launch {navigation_launch_command}")
@@ -618,10 +681,12 @@ def run(args: argparse.Namespace):
             if not args.no_gpu
             else ""
         )
+        robots_sim_arg = shlex.quote(f"robots:={robots_arg}") if robots_arg else ""
+        robot_name_arg = f"robot_name:={primary_robot}" if primary_robot else ""
         pane.send_keys(
             f"{gpu_env_var}ros2 launch gazebo_sim simulation.launch.py headless:={args.headless} world_pkg_name:={world_pkg_name} base_world:={world} \
                 agents_configuration_file:={agents_configuration_file} config_pkg_name:={agents_pkg_name} \
-                    use_lidar_gpu:={not args.no_gpu}"
+                    use_lidar_gpu:={not args.no_gpu} {robot_name_arg} {robots_sim_arg}"
         )
         print("Started Gazebo simulation")
 
@@ -647,7 +712,10 @@ def run(args: argparse.Namespace):
             # Start RViz
             pane = window.panes[0]
             pane.select()
-            pane.send_keys("ros2 launch gazebo_test rviz.launch.py")
+            rviz_robots_arg = (
+                shlex.quote(f"robots:={robots_arg}") if robots_arg else ""
+            )
+            pane.send_keys(f"ros2 launch gazebo_test rviz.launch.py {rviz_robots_arg}")
             print("Started RViz")
         if args.hunav_eval:
             session.new_window(attach=True, window_name="Hunav Eval")
@@ -741,6 +809,7 @@ def run(args: argparse.Namespace):
                 {navigation_backend_arg} \
                 {watchdog_required_nodes_arg} \
                 {nav_params_file_arg} \
+                task:={task} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )
         print("Started gazebo test")

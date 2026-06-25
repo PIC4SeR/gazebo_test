@@ -52,6 +52,14 @@ def lifecycle_nodes(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
     log_level = LaunchConfiguration("log_level")
+    # Target the namespaced container (e.g. /jackal/nav2_container), not the
+    # relative name -- otherwise the lifecycle manager tries to load into a
+    # non-existent global /nav2_container and never starts the stack.
+    container_name_full = (
+        LaunchConfiguration("namespace"),
+        "/",
+        LaunchConfiguration("container_name"),
+    )
     lifecycle_nodes = [
         "smoother_server",
         "planner_server",
@@ -77,7 +85,7 @@ def lifecycle_nodes(context, *args, **kwargs):
             ],
         ),
         LoadComposableNodes(
-            target_container=LaunchConfiguration("container_name"),
+            target_container=container_name_full,
             condition=IfCondition(use_composition),
             composable_node_descriptions=[
                 ComposableNode(
@@ -120,7 +128,9 @@ def generate_launch_description():
     remappings = [
         ("/tf", "tf"),
         ("/tf_static", "tf_static"),
-        ("people", "jackal/detected_people"),
+        # Relative so it resolves under the robot namespace (/<ns>/detected_people)
+        # instead of the hardcoded /jackal/... which double-prefixes under a ns.
+        ("people", "detected_people"),
     ]
 
     # Create our own temporary YAML files that include substitutions

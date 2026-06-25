@@ -28,9 +28,10 @@ class TaskResult(Enum):
 
 class BasicNavigator:
 
-    def __init__(self, node: Node):
+    def __init__(self, node: Node, namespace: str = ""):
 
         self.node = node
+        self._ns = namespace.strip("/")
         self._loop = None
 
         self.follow_path_goal_handle = None
@@ -46,23 +47,37 @@ class BasicNavigator:
 
         # for now allow only the nav_to_pose action
         self.nav_to_pose_client = ActionClient(
-            self.node, NavigateToPose, "navigate_to_pose"
+            self.node, NavigateToPose, self._n("navigate_to_pose")
         )
-        self.follow_path_client = ActionClient(self.node, FollowPath, "follow_path")
+        self.follow_path_client = ActionClient(
+            self.node, FollowPath, self._n("follow_path")
+        )
         self.compute_path_to_pose_client = ActionClient(
-            self.node, ComputePathToPose, "compute_path_to_pose"
+            self.node, ComputePathToPose, self._n("compute_path_to_pose")
         )
-        self.smoother_client = ActionClient(self.node, SmoothPath, "smooth_path")
+        self.smoother_client = ActionClient(self.node, SmoothPath, self._n("smooth_path"))
         # todo: explore map changing
 
         self.clear_costmap_global_srv = node.create_client(
-            ClearEntireCostmap, "global_costmap/clear_entirely_global_costmap"
+            ClearEntireCostmap, self._n("global_costmap/clear_entirely_global_costmap")
         )
         self.clear_costmap_local_srv = node.create_client(
-            ClearEntireCostmap, "local_costmap/clear_entirely_local_costmap"
+            ClearEntireCostmap, self._n("local_costmap/clear_entirely_local_costmap")
         )
         self.logger = get_logger("basic_navigator")
         # self.logger.set_level(rclpy.logging.LoggingSeverity.DEBUG)
+
+    def _n(self, name: str) -> str:
+        """Prefix a topic/service/node name with this navigator's namespace."""
+        if not self._ns:
+            return name
+        return f"/{self._ns}/{name.lstrip('/')}"
+
+    def _owned_lifecycle_service(self, srv_name: str) -> bool:
+        """True if a ManageLifecycleNodes service belongs to this namespace."""
+        if not self._ns:
+            return True
+        return srv_name.startswith(f"/{self._ns}/")
 
     def destroy_node(self):
         """Destroy the node and all action clients."""
@@ -222,7 +237,7 @@ class BasicNavigator:
         """Startup nav2 lifecycle system."""
         self.logger.debug("Starting up lifecycle nodes based on lifecycle_manager.")
         for srv_name, srv_type in self.node.get_service_names_and_types():
-            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes":
+            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
                 self.logger.debug(f"Starting up {srv_name}")
                 mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
                 while not mgr_client.wait_for_service(timeout_sec=1.0):
@@ -241,7 +256,7 @@ class BasicNavigator:
         """Reset nav2 lifecycle system."""
         self.logger.debug("Resetting lifecycle nodes based on lifecycle_manager.")
         for srv_name, srv_type in self.node.get_service_names_and_types():
-            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes":
+            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
                 self.logger.debug(f"Resetting {srv_name}")
                 mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
                 while not mgr_client.wait_for_service(timeout_sec=1.0):
@@ -259,7 +274,7 @@ class BasicNavigator:
         """Shutdown nav2 lifecycle system."""
         self.logger.debug("Shutting down lifecycle nodes based on lifecycle_manager.")
         for srv_name, srv_type in self.node.get_service_names_and_types():
-            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes":
+            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
                 self.logger.debug(f"Shutting down {srv_name}")
                 mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
                 while not mgr_client.wait_for_service(timeout_sec=1.0):
@@ -280,7 +295,7 @@ class BasicNavigator:
             node_name (str): The name of the node to check.
         """
         self.logger.debug(f"Checking state of {node_name}...")
-        node_service = f"{node_name}/get_state"
+        node_service = self._n(f"{node_name}/get_state")
         state_client = self.node.create_client(GetState, node_service)
         while not state_client.wait_for_service(timeout_sec=1.0):
             self.logger.debug(f"{node_service} service not available, waiting...")
@@ -295,7 +310,7 @@ class BasicNavigator:
             node_name (str): The name of the node to wait for.
         """
         self.logger.debug(f"Waiting for {node_name} to become active..")
-        node_service = f"{node_name}/get_state"
+        node_service = self._n(f"{node_name}/get_state")
         state_client = self.node.create_client(GetState, node_service)
         while not state_client.wait_for_service(timeout_sec=1.0):
             self.logger.debug(f"{node_service} service not available, waiting...")

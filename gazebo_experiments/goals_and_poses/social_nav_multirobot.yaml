@@ -1,0 +1,34 @@
+# Multi-robot goals/poses. The top-level `robots:` list switches the experiment
+# manager into fleet mode (parse_fleet_yaml). Namespace == robot name.
+robots:
+  - name: jackal
+    model: jackal
+    spawn: [9.0, 9.0, -3.140]        # x, y, theta spawn pose in Gazebo
+    # nav2_params: <pkg-or-abs path>  # optional per-robot Nav2 params (heterogeneous)
+  - name: jackal1
+    model: jackal
+    spawn: [8.0, 9.0, -3.140]
+
+goal_name: "goal_box"                 # per-robot goal box becomes goal_box_<name>
+map_path: "maps/social_nav_map.yaml"
+
+episodes:
+  - episode_1
+  - episode_2
+
+# Per episode, one entry per robot name.
+goals:
+  episode_1:
+    jackal: [2.49, 8.11]
+    jackal1: [2.21, 0.36]
+  episode_2:
+    jackal: [0.76, 2.0]
+    jackal1: [8.7, 0.369]
+
+poses:
+  episode_1:
+    jackal: [8.8, 8.32, -3.0]
+    jackal1: [0.68, 8.52, -1.573]
+  episode_2:
+    jackal: [1.5, 8.51, -1.571]
+    jackal1: [8.77, 3.479, -3.139]

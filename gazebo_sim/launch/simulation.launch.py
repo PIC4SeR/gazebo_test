@@ -35,6 +35,13 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     use_gazebo_obs: DeclareLaunchArgument = HunavArgs.use_gazebo_obs
     update_rate: DeclareLaunchArgument = HunavArgs.update_rate
     robot_name: DeclareLaunchArgument = GazeboCommonArgs.robot_name
+    robots: DeclareLaunchArgument = DeclareLaunchArgument(
+        "robots",
+        default_value="",
+        description="YAML/JSON-encoded fleet list (see spawn_robot.launch.py). "
+        "When set, the whole fleet is spawned instead of the single robot_name. "
+        "HuNav still tracks only robot_name socially; other robots are obstacles.",
+    )
     global_frame_to_publish: DeclareLaunchArgument = HunavArgs.global_frame_to_publish
     ignore_models: DeclareLaunchArgument = HunavArgs.ignore_models
     x: DeclareLaunchArgument = GazeboCommonArgs.x
@@ -168,8 +175,28 @@ def generate_launch_description():
     ld.add_action(hunav_world_generation)
     ld.add_action(launch_simulation_without_hunav)
     ld.add_action(launch_simulation)
-    ld.add_action(
-        map_to_odom_identity(use_sim_time=LaunchConfiguration("use_sim_time"))
-    )
+    # One map->odom per robot namespace so the transform lands on /<ns>/tf.
+    ld.add_action(OpaqueFunction(function=add_map_to_odom))
 
     return ld
+
+
+def add_map_to_odom(context, *args, **kwargs):
+    """Publish a map->odom identity transform per robot namespace.
+
+    The lone robot uses its own name (robot_name); a fleet gets one per robot
+    (namespace == robot name).
+    """
+    import yaml
+
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    robots_raw = LaunchConfiguration("robots").perform(context).strip()
+    fleet = yaml.safe_load(robots_raw) if robots_raw else []
+    if fleet:
+        namespaces = [str(r["name"]) for r in fleet]
+    else:
+        namespaces = [LaunchConfiguration("robot_name").perform(context)]
+    return [
+        map_to_odom_identity(use_sim_time=use_sim_time, namespace=ns)
+        for ns in namespaces
+    ]

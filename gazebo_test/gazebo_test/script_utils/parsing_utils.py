@@ -152,6 +152,7 @@ def parse_experiment_name(experiment_name: str) -> Dict:
             "navigation_launch",
             experiment.get("navigation_launch_file", None),
         ),
+        "task": experiment.get("task", "go_to_pose"),
     }
 
 

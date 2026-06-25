@@ -24,6 +24,8 @@ class ExperimentResult(Enum):
     FAILURE_TIMEOUT = 4
     FAILURE_NAVIGATION = 5
     RESULT_NOT_SET = 6
+    # Multi-robot: a robot collided with another robot in the fleet.
+    FAILURE_COLLISION_ROBOT = 7
 
     def __str__(self):
         match self:
@@ -33,6 +35,8 @@ class ExperimentResult(Enum):
                 return "Failure: Collision with environment"
             case ExperimentResult.FAILURE_COLLISION_AGENT:
                 return "Failure: Collision with agent"
+            case ExperimentResult.FAILURE_COLLISION_ROBOT:
+                return "Failure: Collision with robot"
             case ExperimentResult.FAILURE_TIMEOUT:
                 return "Failure: Timeout"
             case ExperimentResult.FAILURE_NAVIGATION:
