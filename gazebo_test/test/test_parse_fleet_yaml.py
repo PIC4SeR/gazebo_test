@@ -59,6 +59,60 @@ def test_missing_goal_raises():
     raise AssertionError("expected ValueError for incomplete goal")
 
 
+# Formation config: no per-robot goals, a per-episode centroid target instead.
+FORMATION_YAML = """
+robots:
+  - {name: jackal,  model: jackal, spawn: [9.0, 9.0, -3.14]}
+  - {name: jackal1, model: jackal, spawn: [8.0, 9.0, -3.14]}
+episodes: [episode_1]
+poses:
+  episode_1: {jackal: [8.8, 8.32, -3.0], jackal1: [7.8, 8.32, -3.0]}
+centroid:
+  episode_1: [2.49, 4.0]
+"""
+
+
+def test_formation_config_optional_goals_and_centroid():
+    parsed = parse_fleet_yaml(_write(FORMATION_YAML))
+
+    # Poses still parsed; goals omitted entirely (formation has none).
+    assert set(parsed["initial_state_entities"]["episode_1"]) == {"jackal", "jackal1"}
+    assert parsed["goal_entities"]["episode_1"] == {}
+    # Per-episode swarm target centroid.
+    assert parsed["centroid"]["episode_1"] == (2.49, 4.0)
+
+
+def test_missing_pose_raises_even_without_goals():
+    bad = FORMATION_YAML.replace("jackal1: [7.8, 8.32, -3.0]", "jackal1: [7.8, 8.32]")
+    try:
+        parse_fleet_yaml(_write(bad))
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for incomplete pose")
+
+
+# Single-robot config: the same schema, a 'robots:' list with one participant.
+SINGLE_ROBOT_YAML = """
+robots:
+  - {name: jackal, model: jackal, spawn: [9.0, 9.0, -3.14]}
+goal_name: goal_box
+episodes: [episode_1]
+goals:
+  episode_1: {jackal: [2.41, 8.5]}
+poses:
+  episode_1: {jackal: [9.0, 8.18, -3.2]}
+"""
+
+
+def test_single_robot_fleet_of_one():
+    parsed = parse_fleet_yaml(_write(SINGLE_ROBOT_YAML))
+
+    assert [r["name"] for r in parsed["fleet"]] == ["jackal"]
+    assert set(parsed["initial_state_entities"]["episode_1"]) == {"jackal"}
+    assert parsed["goal_entities"]["episode_1"]["jackal"].name == "goal_box_jackal"
+    assert abs(parsed["goal_entities"]["episode_1"]["jackal"].pose.position.x - 2.41) < 1e-9
+
+
 def test_single_robot_config_rejected():
     try:
         parse_fleet_yaml(_write("robot_name: jackal\nepisodes: []\n"))
@@ -70,5 +124,8 @@ def test_single_robot_config_rejected():
 if __name__ == "__main__":
     test_parse_fleet_yaml()
     test_missing_goal_raises()
+    test_formation_config_optional_goals_and_centroid()
+    test_missing_pose_raises_even_without_goals()
+    test_single_robot_fleet_of_one()
     test_single_robot_config_rejected()
     print("PASS parse_fleet_yaml self-check")

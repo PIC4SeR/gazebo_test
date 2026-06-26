@@ -17,7 +17,7 @@ from gazebo_msgs.msg import EntityState
 from gazebo_test.tasks.base import ExperimentTask, register_task
 from gazebo_test.utils.common_utils import (
     get_posestamped_from_entity,
-    parse_entity_state_yaml,
+    parse_fleet_yaml,
 )
 from gazebo_test.utils.evaluation_handler import ExperimentResult
 from gazebo_test.utils.navigation_handler import NavigationHandler
@@ -35,14 +35,31 @@ class GoToPoseTask(ExperimentTask):
         self.robot_namespace: str = "jackal"
 
     def load_entities(self, yaml_path: Path) -> List[str]:
-        parsed = parse_entity_state_yaml(yaml_path)
-        self.initial_state_entities = parsed["initial_state_entities"]
-        self.goal_entities = parsed["goal_entities"]
-        # The robot's name (from the YAML's 'robot_name') is its namespace.
-        entities = list(self.initial_state_entities.values())
-        if entities:
-            self.robot_namespace = entities[0].name
-        return list(self.initial_state_entities.keys())
+        # Same fleet schema as the multi-robot task -- a single-robot config is
+        # just a ``robots:`` list of one. Collapse the per-robot dicts to the lone
+        # robot the single-robot pipeline drives.
+        parsed = parse_fleet_yaml(yaml_path)
+        fleet = parsed["fleet"]
+        if len(fleet) != 1:
+            raise ValueError(
+                f"'{yaml_path}' has {len(fleet)} robots; the 'go_to_pose' task "
+                "drives a single robot. Use 'task: multirobot' for a fleet."
+            )
+        ns = self.robot_namespace = fleet[0]["name"]
+        episodes = list(parsed["initial_state_entities"].keys())
+        for episode in episodes:
+            if ns not in parsed["goal_entities"].get(episode, {}):
+                raise ValueError(
+                    f"Episode '{episode}' is missing a 'goals' entry for '{ns}'."
+                )
+        self.initial_state_entities = {
+            episode: parsed["initial_state_entities"][episode][ns]
+            for episode in episodes
+        }
+        self.goal_entities = {
+            episode: parsed["goal_entities"][episode][ns] for episode in episodes
+        }
+        return episodes
 
     def watchdog_required_nodes(self) -> List[str]:
         ns = self.robot_namespace

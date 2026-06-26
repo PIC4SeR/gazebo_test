@@ -213,8 +213,7 @@ class MultiRobotGoToPoseTask(ExperimentTask):
         return _callback
 
     def _classify_collision(self, ns: str, msg: Collision) -> ExperimentResult:
-        hits = list(getattr(msg, "objects_hit", []) or [])
-        hit = hits[0] if hits else ""
+        hit = msg.objects_hit[0] if msg.objects_hit else ""
         if "agent" in hit:
             return ExperimentResult.FAILURE_COLLISION_AGENT
         # Another fleet robot (not this one) named in the contact.

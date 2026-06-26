@@ -322,11 +322,6 @@ def _spawn_robot_with_controllers(
         actions.append(controller_spawners_callback)
 
     if namespace:
-        # ponytail: standard Nav2 multi-robot pattern -- push the whole spawn +
-        # control group into the robot's namespace, and remap /tf so the
-        # robot_state_publisher / EKF publish to /<ns>/tf (matching the Nav2
-        # stack, which also remaps /tf->tf). Needs validation on a real stack for
-        # non-jackal models (only jackal/ghost have control branches).
         return [
             GroupAction(
                 actions=[

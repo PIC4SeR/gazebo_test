@@ -60,16 +60,6 @@ class NavigationHandler:
         await self.navigator.waitUntilNav2Active()
         self.logger.debug("NavigationHandler initialized")
 
-    def pause_navigation(self) -> None:
-        """
-        Pauses the navigation stack by sending a request to the lifecycle manager.
-
-        This method creates a client for the ManageLifecycleNodes service and sends
-        a request to pause the navigation stack. It waits for the response and logs
-        the result.
-        """
-        pass
-
     async def reset_navigation(self) -> None:
         """
         Resets the navigation stack by sending a request to the lifecycle manager.
@@ -180,37 +170,30 @@ class NavigationHandler:
             )
 
     async def cancel_navigation(self) -> None:
+        """Cancel any in-flight goal, whichever path started it.
+
+        The goal may have been launched via :meth:`start_navigation_task` (nav2
+        path, tracked by ``navigation_task``) or driven straight through the
+        navigator (action path, e.g. the formation task). ``cancelGoToPose`` is a
+        no-op when no goal is active, so it is always safe to call.
         """
-        Cancels the navigation task if it is running.
-        This method checks if the navigation task is running and cancels it.
-        """
+        self.logger.debug("Cancelling navigation ...")
+        try:
+            await self.navigator.cancelGoToPose()
+        except Exception as exc:  # noqa: BLE001
+            self.logger.debug(f"cancelGoToPose failed or already complete: {exc}")
+
         if self.navigation_task:
-            self.logger.debug("Cancelling navigation task ...")
-            try:
-                await self.navigator.cancelGoToPose()
-            except Exception as exc:  # noqa: BLE001
-                self.logger.debug(f"cancelGoToPose failed or already complete: {exc}")
             self.navigation_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self.navigation_task
             self.navigation_task = None
 
         if task := getattr(self, "wait_for_events_task", None):
-            self.logger.debug("Cancelling wait_for_events task ...")
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
             self.wait_for_events_task = None
-
-    def resume_navigation(self) -> None:
-        """
-        Resumes the navigation stack by sending a request to the lifecycle manager.
-
-        This method creates a client for the ManageLifecycleNodes service and sends
-        a request to resume the navigation stack. It waits for the response and logs
-        the result.
-        """
-        pass
 
     async def _call_lifecycle_step(
         self, description: str, action: Callable[[], Awaitable[None]]

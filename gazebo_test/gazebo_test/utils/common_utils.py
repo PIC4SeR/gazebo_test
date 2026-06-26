@@ -7,80 +7,6 @@ from tf_transformations import quaternion_from_euler
 import yaml
 
 
-def parse_entity_state_yaml(yaml_path: Path) -> Dict[str, Dict[str, EntityState]]:
-    """
-    Parse data to create a list of EntityState objects.
-    This method reads the yaml file from the provided path and converts it into
-    a list of EntityState objects.
-    The data should contain the necessary information to create EntityState
-    objects, such as name, pose, and other attributes.
-
-
-    Args:
-        yaml_path (Path): Path to the YAML file containing the entity state data.
-    Returns:
-        Dict[str, Dict[str, EntityState]]: A dictionary with two keys:
-            'initial_state_entities' and 'goal_entities', each containing a
-            dictionary mapping episode names to their corresponding EntityState
-            objects.
-    """
-
-    with open(yaml_path, "r") as file:
-        data = yaml.safe_load(file)
-
-    episodes = data.get("episodes", [])
-
-    goals = data.get("goals", {})
-    poses = data.get("poses", {})
-
-    robot_name = data.get("robot_name", "robot")
-    goal_name = data.get("goal_name", "goal_box")
-
-    initial_state_entities = {}
-    goal_entities = {}
-
-    for episode in episodes:
-        goal = goals.get(episode)
-        pose = poses.get(episode)
-        if goal is None or len(goal) < 2:
-            raise ValueError(
-                f"Episode '{episode}' is missing a valid 'goals' entry [x, y]."
-            )
-        if pose is None or len(pose) < 3:
-            raise ValueError(
-                f"Episode '{episode}' is missing a valid 'poses' entry [x, y, theta]."
-            )
-
-        goal_entity = EntityState()
-        goal_entity.name = goal_name
-        goal_entity.pose = Pose()
-        goal_entity.pose.position.x = float(goal[0])
-        goal_entity.pose.position.y = float(goal[1])
-
-        initial_state_entity = EntityState()
-        initial_state_entity.name = robot_name
-        initial_state_entity.pose = Pose()
-
-        # Position
-        initial_state_entity.pose.position.x = float(pose[0])
-        initial_state_entity.pose.position.y = float(pose[1])
-        initial_state_entity.pose.position.z = 0.07
-        # Orientation
-        quaternion = quaternion_from_euler(0, 0, float(pose[2]))
-        initial_state_entity.pose.orientation.x = quaternion[0]
-        initial_state_entity.pose.orientation.y = quaternion[1]
-        initial_state_entity.pose.orientation.z = quaternion[2]
-        initial_state_entity.pose.orientation.w = quaternion[3]
-        # Reference frame
-
-        goal_entities[episode] = goal_entity
-        initial_state_entities[episode] = initial_state_entity
-    return {
-        "initial_state_entities": initial_state_entities,
-        "goal_entities": goal_entities,
-    }
-
-
 def _entity_from_pose(name: str, x: float, y: float, theta: float, z: float) -> EntityState:
     entity = EntityState()
     entity.name = name
@@ -97,21 +23,32 @@ def _entity_from_pose(name: str, x: float, y: float, theta: float, z: float) -> 
 
 
 def parse_fleet_yaml(yaml_path: Path) -> dict:
-    """Parse a multi-robot goals/poses YAML.
+    """Parse a goals/poses YAML for any number of robots.
 
-    Schema (the presence of a top-level ``robots:`` list selects multi-robot mode)::
+    This is the single parser for both the single-robot ``go_to_pose`` task and
+    the multi-robot tasks: a single-robot config is just a ``robots:`` list with
+    one participant. The presence of a top-level ``robots:`` list is required.
+
+    Schema::
 
         robots:
           - {name: jackal0, model: jackal,    spawn: [x, y, theta], nav2_params: <path>}
           - {name: tb3_1,   model: turtlebot3, spawn: [x, y, theta]}
         goal_name: goal_box            # per-robot goal box becomes "<goal_name>_<robot>"
         episodes: [episode_1, ...]
-        goals:   {episode_1: {jackal0: [x, y],        tb3_1: [x, y]}}
+        goals:   {episode_1: {jackal0: [x, y],        tb3_1: [x, y]}}   # optional
         poses:   {episode_1: {jackal0: [x, y, theta], tb3_1: [x, y, theta]}}
+        centroid: {episode_1: [x, y]}                                 # optional
+
+    ``poses`` are required. Per-robot ``goals`` are required only when present
+    (the go-to-pose fleet task drives them); the formation task instead steers
+    the whole swarm toward the per-episode ``centroid`` target, so it omits
+    ``goals``.
 
     Returns a dict with keys ``fleet`` (list of robot dicts, namespace == name),
     ``initial_state_entities`` and ``goal_entities`` mapping
-    episode -> {robot_name -> EntityState}.
+    episode -> {robot_name -> EntityState}, and ``centroid`` mapping
+    episode -> (x, y) for episodes that declare one.
     """
     with open(yaml_path, "r") as file:
         data = yaml.safe_load(file)
@@ -119,14 +56,15 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
     fleet = data.get("robots")
     if not fleet:
         raise ValueError(
-            f"'{yaml_path}' has no 'robots:' list; use parse_entity_state_yaml for "
-            "single-robot configs."
+            f"'{yaml_path}' has no 'robots:' list. Every goals/poses config -- "
+            "single robot included -- must declare a 'robots:' list."
         )
     robot_names = [r["name"] for r in fleet]
     goal_name = data.get("goal_name", "goal_box")
     episodes = data.get("episodes", [])
     goals = data.get("goals", {})
     poses = data.get("poses", {})
+    centroid_cfg = data.get("centroid", {})
 
     initial_state_entities: Dict[str, Dict[str, EntityState]] = {}
     goal_entities: Dict[str, Dict[str, EntityState]] = {}
@@ -136,12 +74,7 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
         initial_state_entities[episode] = {}
         goal_entities[episode] = {}
         for name in robot_names:
-            goal = ep_goals.get(name)
             pose = ep_poses.get(name)
-            if goal is None or len(goal) < 2:
-                raise ValueError(
-                    f"Episode '{episode}', robot '{name}' missing 'goals' [x, y]."
-                )
             if pose is None or len(pose) < 3:
                 raise ValueError(
                     f"Episode '{episode}', robot '{name}' missing 'poses' [x, y, theta]."
@@ -149,13 +82,27 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
             initial_state_entities[episode][name] = _entity_from_pose(
                 name, pose[0], pose[1], pose[2], z=0.07
             )
-            goal_entities[episode][name] = _entity_from_pose(
-                f"{goal_name}_{name}", goal[0], goal[1], 0.0, z=0.0
-            )
+            # Per-robot goals are optional (formation has none); validate only
+            # when a 'goals' block is present for the episode.
+            if ep_goals:
+                goal = ep_goals.get(name)
+                if goal is None or len(goal) < 2:
+                    raise ValueError(
+                        f"Episode '{episode}', robot '{name}' missing 'goals' [x, y]."
+                    )
+                goal_entities[episode][name] = _entity_from_pose(
+                    f"{goal_name}_{name}", goal[0], goal[1], 0.0, z=0.0
+                )
+    centroid = {
+        episode: tuple(centroid_cfg[episode])
+        for episode in episodes
+        if episode in centroid_cfg
+    }
     return {
         "fleet": fleet,
         "initial_state_entities": initial_state_entities,
         "goal_entities": goal_entities,
+        "centroid": centroid,
     }
 
 

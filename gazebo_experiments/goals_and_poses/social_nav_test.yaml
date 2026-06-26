@@ -1,10 +1,15 @@
-# filepath: /workspaces/hunavsim_ws/src/gazebo_test/gazebo_test/goals_and_poses/social_nav.yaml
-robot_name: "jackal" # The name of the robot
-goal_name: "goal_box" # The name of the goal
-initial_pose: [9.0, 9.0, -3.140] # Initial pose of the robot x, y, theta
-map_path: "maps/social_nav_map.yaml" # The path to the map file
+# Single-robot goals/poses. Same schema as the multi-robot configs: a
+# top-level `robots:` list (here with a single participant) selects fleet
+# parsing (parse_fleet_yaml); namespace == robot name. Per episode, goals and
+# poses are keyed by robot name.
+robots:
+  - name: jackal
+    model: jackal
+    spawn: [9.0, 9.0, -3.14]
+goal_name: goal_box
+map_path: maps/social_nav_map.yaml
 
-episodes: # episodes to be run
+episodes: 
   - episode_1
   - episode_2
   - episode_3
@@ -16,26 +21,46 @@ episodes: # episodes to be run
   - episode_9
   - episode_10
 
-goals: # The goal positions of the robot in x, y
-  episode_1:  [2.49, 8.11]
-  episode_2:  [2.21, 0.36]
-  episode_3:  [0.76, 2.0]
-  episode_4:  [8.7, 0.369]
-  episode_5:  [8.6, -3.106]
-  episode_6:  [1.15, -8.2]
-  episode_7:  [6.2, -8.02]
-  episode_8:  [3.69, 0.62]
-  episode_9:  [7.30, -7.15]
-  episode_10: [1.15, -8.2]
-  
-poses: # The poses of the robot in x, y, theta
-  episode_1:  [8.8, 8.32, -3.0]
-  episode_2:  [0.68, 8.52, -1.573]
-  episode_3:  [1.5, 8.51, -1.571]
-  episode_4:  [8.77, 3.479, -3.139]
-  episode_5:  [4.5, 1.0, 0.0]
-  episode_6:  [3.9, 3.5, -1.576]
-  episode_7:  [8.65, 1.0, -2.61]
-  episode_8:  [2.09, 1.05, -1.576]
-  episode_9:  [1.29, -8.0, 0.1]
-  episode_10: [8.42, -8.25, -3.139]
+goals:
+  episode_1:
+    jackal: [2.49, 8.11]
+  episode_2:
+    jackal: [2.21, 0.36]
+  episode_3:
+    jackal: [0.76, 2.0]
+  episode_4:
+    jackal: [8.7, 0.369]
+  episode_5:
+    jackal: [8.6, -3.106]
+  episode_6:
+    jackal: [1.15, -8.2]
+  episode_7:
+    jackal: [6.2, -8.02]
+  episode_8:
+    jackal: [3.69, 0.62]
+  episode_9:
+    jackal: [7.3, -7.15]
+  episode_10:
+    jackal: [1.15, -8.2]
+
+poses:
+  episode_1:
+    jackal: [8.8, 8.32, -3.0]
+  episode_2:
+    jackal: [0.68, 8.52, -1.573]
+  episode_3:
+    jackal: [1.5, 8.51, -1.571]
+  episode_4:
+    jackal: [8.77, 3.479, -3.139]
+  episode_5:
+    jackal: [4.5, 1.0, 0.0]
+  episode_6:
+    jackal: [3.9, 3.5, -1.576]
+  episode_7:
+    jackal: [8.65, 1.0, -2.61]
+  episode_8:
+    jackal: [2.09, 1.05, -1.576]
+  episode_9:
+    jackal: [1.29, -8.0, 0.1]
+  episode_10:
+    jackal: [8.42, -8.25, -3.139]

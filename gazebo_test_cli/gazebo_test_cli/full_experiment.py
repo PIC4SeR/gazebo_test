@@ -206,22 +206,13 @@ def _default_navigation_launch_command(
     return cmd
 
 
-def _load_fleet_robots(goals_and_poses_path: str) -> list:
-    """Return the 'robots' list from a goals/poses YAML, or [] if single-robot."""
+def _load_goals_yaml(goals_and_poses_path: str) -> dict:
+    """Load a goals/poses YAML as a dict, or {} if it can't be read/parsed."""
     try:
         with open(goals_and_poses_path, "r") as f:
-            return yaml.safe_load(f).get("robots") or []
+            return yaml.safe_load(f) or {}
     except Exception:  # noqa: BLE001
-        return []
-
-
-def _load_lone_robot_name(goals_and_poses_path: str) -> str:
-    """Return the single-robot 'robot_name' from a goals/poses YAML."""
-    try:
-        with open(goals_and_poses_path, "r") as f:
-            return str(yaml.safe_load(f).get("robot_name") or "jackal")
-    except Exception:  # noqa: BLE001
-        return "jackal"
+        return {}
 
 
 def _default_watchdog_nodes_for_backend(
@@ -486,24 +477,22 @@ def run(args: argparse.Namespace):
     # CLI --task overrides the experiment's declared task.
     task = (args.task or experiment_dict.get("task") or "go_to_pose").strip()
 
-    # For a fleet task, load the robots list once and encode it for the launch
-    # files. HuNav tracks one robot socially, so robot_name is pinned to the
-    # first robot; its name must be a valid model id (e.g. "jackal") since
-    # robot_name doubles as the model selector. The rest are dynamic obstacles.
-    fleet_robots = _load_fleet_robots(goals_and_poses) if task == "multirobot" else []
+    # Every goals/poses config -- single robot included -- declares a top-level
+    # 'robots:' list (parse_fleet_yaml). The first robot's name doubles as its
+    # namespace and (being also the model selector) must be a valid model id
+    # (e.g. "jackal"); HuNav tracks it socially. For fleet tasks the whole list
+    # is encoded for the launch files; the single-robot go_to_pose task keeps the
+    # lone launch path (robots_arg stays empty), so the rest of the fleet -- when
+    # present -- are dynamic obstacles.
+    goals_yaml = _load_goals_yaml(goals_and_poses)
+    all_robots = goals_yaml.get("robots") or []
+    fleet_robots = all_robots if task in ("multirobot", "formation") else []
     robots_arg = (
         yaml.safe_dump(fleet_robots, default_flow_style=True).strip()
         if fleet_robots
         else ""
     )
-    # The primary robot's name doubles as its namespace. Fleet -> first robot;
-    # lone robot -> the goals/poses 'robot_name'. Threaded to spawn (robot_name),
-    # the lone Nav2 bringup (namespace), and HuNav (tracked robot).
-    primary_robot = (
-        str(fleet_robots[0]["name"])
-        if fleet_robots
-        else _load_lone_robot_name(goals_and_poses)
-    )
+    primary_robot = str(all_robots[0]["name"]) if all_robots else "jackal"
     agents_configuration_file = experiment_dict.get("agents_configuration_file", "")
     world_pkg_name = experiment_dict.get("world_pkg_name", "")
     agents_pkg_name = experiment_dict.get("agents_pkg_name", "")
@@ -621,6 +610,10 @@ def run(args: argparse.Namespace):
         "algorithm_name": selected_algorithm_name,
         "ros_domain_id": ros_domain_id,
         "gazebo_uri": gazebo_uri,
+        # Fleet wiring for a swarm/formation navigation_launch override (e.g.
+        # swarm_control hybrid.launch.py): the encoded robots list and its size.
+        "robots": robots_arg,
+        "n_robots": len(fleet_robots),
     }
     navigation_launch_command = None
     if not args.no_navigation_launch:

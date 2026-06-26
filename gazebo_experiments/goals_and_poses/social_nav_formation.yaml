@@ -1,0 +1,36 @@
+# Formation task goals/poses. The top-level `robots:` list switches the
+# experiment manager into fleet mode (parse_fleet_yaml); task=formation drives
+# the whole swarm through swarm_control's hybrid orchestrator. Namespace == name.
+#
+# Unlike the multirobot task there are NO per-robot `goals:` -- formation-keeping
+# is delegated to swarm_control, and each episode declares a single swarm target
+# `centroid:` (the point the formation translates toward).
+robots:
+  - name: jackal                    # first robot's name must be a valid model id
+    model: jackal
+    spawn: [9.0, 9.0, -3.140]       # x, y, theta spawn pose in Gazebo
+  - name: jackal1
+    model: jackal
+    spawn: [8.0, 9.0, -3.140]
+
+goal_name: "goal_box"               # the centroid is visualized as this box
+map_path: "maps/social_nav_map.yaml"
+
+episodes:
+  - episode_1
+  - episode_2
+
+# Initial formation per episode (one entry per robot). The swarm holds this
+# relative shape (set by swarm_control's gains) while translating.
+poses:
+  episode_1:
+    jackal: [8.8, 8.32, -3.0]
+    jackal1: [7.8, 8.32, -3.0]
+  episode_2:
+    jackal: [1.5, 8.51, -1.571]
+    jackal1: [0.5, 8.51, -1.571]
+
+# Single swarm target centroid per episode.
+centroid:
+  episode_1: [2.49, 4.0]
+  episode_2: [6.0, 2.0]
