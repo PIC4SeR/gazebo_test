@@ -224,13 +224,6 @@ class NavigationHandler:
 
     def _normalize_backend(self, backend: str) -> str:
         normalized = str(backend or "nav2").strip().lower()
-        aliases = {
-            "navigate_to_pose": "action",
-            "navigate-to-pose": "action",
-            "nav2_action": "action",
-            "nav2-action": "action",
-        }
-        normalized = aliases.get(normalized, normalized)
         if normalized not in self.VALID_BACKENDS:
             raise ValueError(
                 f"Unsupported navigation backend '{backend}'. "

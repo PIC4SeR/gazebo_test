@@ -548,10 +548,6 @@ def run(args: argparse.Namespace):
         checkpoint_dsn_value = ""
         checkpoint_enabled = False
 
-    if checkpoint_enabled and ExperimentCheckpointStore is None:
-        raise RuntimeError(
-            "Checkpoint store support is unavailable because the 'psycopg' dependency is missing. Install it or rerun with --disable-checkpoint."
-        )
     selected_algorithm_name = (args.algorithm_name or "").strip()
     if not selected_algorithm_name:
         selected_algorithm_name = (args.navigator or "").strip()
@@ -560,15 +556,14 @@ def run(args: argparse.Namespace):
     experiment_identifier = Path(goals_and_poses).stem
 
     if checkpoint_enabled:
-        assert ExperimentCheckpointStore is not None
         try:
             checkpoint_store = ExperimentCheckpointStore(checkpoint_dsn_value)
-            existing_jobs = checkpoint_store.list_jobs(  # type: ignore[attr-defined]
+            existing_jobs = checkpoint_store.list_jobs(
                 algorithm=selected_algorithm_name,
                 experiment_identifier=experiment_identifier,
             )
             if existing_jobs:
-                if not checkpoint_store.has_incomplete_jobs(  # type: ignore[attr-defined]
+                if not checkpoint_store.has_incomplete_jobs(
                     algorithm=selected_algorithm_name,
                     experiment_identifier=experiment_identifier,
                 ):
@@ -786,13 +781,14 @@ def run(args: argparse.Namespace):
             else ""
         )
         # Record the navigation config used in the results provenance.
-        nav_params_file_arg = (
-            f"nav_params_file:={navigator_path}" if navigator_path else ""
+        params_file_arg = (
+            f"params_file:={navigator_path}" if navigator_path else ""
         )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
                 goals_and_poses_file:={goals_and_poses} \
+                experiment_name:={args.experiment} \
                 {base_path_for_results} \
                 {algorithm_name} \
                 {exp_config_pkg} \
@@ -801,7 +797,7 @@ def run(args: argparse.Namespace):
                 {resume_checkpoint} \
                 {navigation_backend_arg} \
                 {watchdog_required_nodes_arg} \
-                {nav_params_file_arg} \
+                {params_file_arg} \
                 task:={task} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )

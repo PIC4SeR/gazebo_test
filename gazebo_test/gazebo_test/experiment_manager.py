@@ -61,7 +61,13 @@ class ExperimentManager(Node):
         self._base_path_root = Path(
             str(base_path_value) or "results/gazebo_test"
         ).expanduser()
-        self._experiment_identifier = Path(yaml_path).stem
+        # Results sub-folder identifier. Prefer the explicit experiment name (the
+        # experiment key, e.g. "orca_crowded_env") so scenarios that share a
+        # goals_and_poses file don't collide; fall back to the goals file stem.
+        experiment_name_param = str(
+            self.declare_parameter("experiment_name", "").value or ""
+        ).strip()
+        self._experiment_identifier = experiment_name_param or Path(yaml_path).stem
 
         # Navigation parameters/config file used for this group of runs (for
         # provenance). Empty when navigation is launched externally.

@@ -8,6 +8,9 @@
   <license>TODO: License declaration</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- Per-model spawn profiles dispatched by robot_name (see spawn_robot.launch.py). -->
+  <exec_depend>robot_profiles</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

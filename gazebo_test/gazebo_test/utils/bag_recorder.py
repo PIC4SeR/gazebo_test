@@ -39,6 +39,30 @@ maps_topic_dict = {
     "/local_costmap/costmap": OccupancyGrid,
 }
 
+# Per-robot topics, relative to each robot's namespace. add_robot_namespaces()
+# prefixes these with "/<namespace>/" for every robot in a fleet. "goal_pose" is
+# written manually (like the global /goal_pose), not subscribed.
+robot_topic_templates = {
+    "goal_pose": PoseStamped,
+    "cmd_vel": Twist,
+    "front/scan": LaserScan,
+    "ground_truth": Odometry,
+    "jackal_velocity_controller/cmd_vel_unstamped": Twist,
+    "jackal_velocity_controller/odom": Odometry,
+    "collision": Collision,
+    "plan": NavPath,
+    "tf": TFMessage,
+    "tf_static": TFMessage,
+}
+
+robot_maps_templates = {
+    "global_costmap/costmap": OccupancyGrid,
+    "local_costmap/costmap": OccupancyGrid,
+}
+
+# Per-robot topics that are written manually rather than subscribed.
+_MANUAL_TEMPLATES = ("goal_pose",)
+
 
 class BagRecorder:
     def __init__(
@@ -68,6 +92,7 @@ class BagRecorder:
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
+        self.record_maps = record_maps
         # build a local copy of topics to record (avoid mutating the module-level dict)
         active_topics = dict(topic_dict)
         if record_maps:
@@ -213,3 +238,72 @@ class BagRecorder:
         self.start_recording(experiment_name, run_id)
         self.set_goal(goal)
         self.logger.debug(f"Started recording and set goal to: {goal}")
+
+    def add_robot_namespaces(self, namespaces):
+        """Register per-robot namespaced topics for a fleet (multi-robot mode).
+
+        Each robot's topics live under ``/<namespace>/...``; this expands the
+        per-robot templates over every namespace and subscribes to them. Call it
+        once, before ``start_recording``. Idempotent and additive: topics already
+        registered (e.g. the single-robot defaults) are skipped, so the lone
+        robot's pre-existing subscriptions are not duplicated.
+
+        Args:
+            namespaces: iterable of robot namespaces (== robot names).
+        """
+        if self.recording:
+            self.logger.warn("Cannot add robot topics while recording.")
+            return
+        templates = dict(robot_topic_templates)
+        if self.record_maps:
+            templates.update(robot_maps_templates)
+
+        added = 0
+        for ns in namespaces:
+            ns_clean = str(ns).strip("/")
+            for rel, msg_type in templates.items():
+                topic_name = f"/{ns_clean}/{rel}"
+                if topic_name in self._active_topics:
+                    continue  # already registered (single-robot default, or dup)
+                self._active_topics[topic_name] = msg_type
+                self.topics_metadata.append(
+                    rosbag2_py.TopicMetadata(
+                        name=topic_name,
+                        type=f"{msg_type.__module__.split('.')[0]}/msg/{msg_type.__name__}",
+                        serialization_format="cdr",
+                    )
+                )
+                if rel in _MANUAL_TEMPLATES:
+                    continue  # written manually (e.g. goal_pose), not subscribed
+                self.node.create_subscription(
+                    msg_type=msg_type,
+                    topic=topic_name,
+                    callback=lambda msg, t=topic_name: self.topic_callback(msg, t),
+                    qos_profile=10,
+                )
+                added += 1
+        self.logger.info(
+            f"BagRecorder: registered per-robot topics for {list(namespaces)} "
+            f"({added} new subscriptions)."
+        )
+
+    def set_goals(self, goals: dict):
+        """Write each robot's goal to its own ``/<namespace>/goal_pose`` topic.
+
+        Args:
+            goals: mapping {robot_namespace: PoseStamped}.
+        """
+        for ns, goal in goals.items():
+            topic_name = f"/{str(ns).strip('/')}/goal_pose"
+            if topic_name not in self._active_topics:
+                self.logger.warn(
+                    f"Goal topic {topic_name} not registered; "
+                    "call add_robot_namespaces() before recording."
+                )
+                continue
+            self.writer.write(
+                topic_name,
+                serialize_message(goal),
+                self.get_clock().now().nanoseconds,
+            )
+        self.logger.debug(f"Per-robot goals set for: {list(goals.keys())}")

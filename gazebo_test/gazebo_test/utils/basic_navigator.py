@@ -3,14 +3,8 @@ from enum import Enum
 from action_msgs.msg import GoalStatus
 
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Path
 from lifecycle_msgs.srv import GetState
-from nav2_msgs.action import ComputePathToPose
-from nav2_msgs.action import (
-    FollowPath,
-    NavigateToPose,
-)
-from nav2_msgs.action import SmoothPath
+from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import ClearEntireCostmap, ManageLifecycleNodes
 
 from rclpy.action import ActionClient
@@ -34,29 +28,17 @@ class BasicNavigator:
         self._ns = namespace.strip("/")
         self._loop = None
 
-        self.follow_path_goal_handle = None
         self.go_to_pose_goal_handle = None
         self.go_to_pose_result = None
-        self.follow_path_result = None
         self.feedback = None
         self.go_to_pose_status = GoalStatus.STATUS_UNKNOWN
-        self.follow_path_status = GoalStatus.STATUS_UNKNOWN
 
         self.go_to_pose_event = asyncio.Event()
-        self.follow_path_event = asyncio.Event()
 
-        # for now allow only the nav_to_pose action
+        # only the nav_to_pose action is used
         self.nav_to_pose_client = ActionClient(
             self.node, NavigateToPose, self._n("navigate_to_pose")
         )
-        self.follow_path_client = ActionClient(
-            self.node, FollowPath, self._n("follow_path")
-        )
-        self.compute_path_to_pose_client = ActionClient(
-            self.node, ComputePathToPose, self._n("compute_path_to_pose")
-        )
-        self.smoother_client = ActionClient(self.node, SmoothPath, self._n("smooth_path"))
-        # todo: explore map changing
 
         self.clear_costmap_global_srv = node.create_client(
             ClearEntireCostmap, self._n("global_costmap/clear_entirely_global_costmap")
@@ -82,19 +64,15 @@ class BasicNavigator:
     def destroy_node(self):
         """Destroy the node and all action clients."""
         self.nav_to_pose_client.destroy()
-        self.follow_path_client.destroy()
-        self.compute_path_to_pose_client.destroy()
-        self.smoother_client.destroy()
         super().destroy_node()
 
     def clearEvents(self):
         """Clear the events."""
         self.go_to_pose_event.clear()
-        self.follow_path_event.clear()
 
     def getEvents(self):
         """Get the events."""
-        return self.go_to_pose_event, self.follow_path_event
+        return (self.go_to_pose_event,)
 
     async def goToPose(self, pose: PoseStamped, behavior_tree: str = "") -> bool:
         """Send a `NavToPose` action request.
@@ -131,33 +109,6 @@ class BasicNavigator:
 
         self.go_to_pose_result = self.go_to_pose_goal_handle.get_result_async()
         self.go_to_pose_result.add_done_callback(self._go_to_pose_result_callback)
-        return True
-
-    async def followPath(
-        self, path: Path, controller_id: str = "", goal_checker_id: str = ""
-    ) -> bool:
-        """Send a `FollowPath` action request.
-        Args:
-            path (Path): The path to follow.
-            controller_id (str): The controller ID to use.
-            goal_checker_id (str): The goal checker ID to use.
-        Returns:
-            bool: True if the goal was accepted, False otherwise."""
-        goal_msg = FollowPath.Goal()
-        goal_msg.path = path
-        goal_msg.controller_id = controller_id
-        goal_msg.goal_checker_id = goal_checker_id
-
-        self.logger.info("Executing path...")
-        send_goal_future = self.follow_path_client.send_goal_async(
-            goal_msg, self._feedbackCallback
-        )
-        self.follow_path_goal_handle = await send_goal_future
-        if not self.follow_path_goal_handle.accepted:
-            self.logger.error("Follow path was rejected!")
-            return False
-        self.follow_path_result = self.follow_path_goal_handle.get_result_async()
-        self.follow_path_result.add_done_callback(self._follow_path_result_callback)
         return True
 
     async def cancelGoToPose(self):
@@ -233,61 +184,36 @@ class BasicNavigator:
         self.logger.debug("Cleared global costmap")
         return
 
-    async def lifecycleStartup(self):
-        """Startup nav2 lifecycle system."""
-        self.logger.debug("Starting up lifecycle nodes based on lifecycle_manager.")
+    async def _manageLifecycleNodes(self, command: int, verb: str) -> None:
+        """Send `command` to every owned ManageLifecycleNodes service."""
+        self.logger.debug(f"{verb} lifecycle nodes based on lifecycle_manager.")
         for srv_name, srv_type in self.node.get_service_names_and_types():
             if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
-                self.logger.debug(f"Starting up {srv_name}")
+                self.logger.debug(f"{verb} {srv_name}")
                 mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
                 while not mgr_client.wait_for_service(timeout_sec=1.0):
                     self.logger.debug(f"{srv_name} service not available, waiting...")
                 req = ManageLifecycleNodes.Request()
-                req.command = ManageLifecycleNodes.Request().STARTUP
+                req.command = command
                 result = await mgr_client.call_async(req)
                 if not result:
-                    self.logger.error(f"Failed to start up {srv_name}")  # handle error
+                    self.logger.error(f"Failed to {verb.lower()} {srv_name}")
                     return
-                self.logger.debug(f"Started up {srv_name}")
+                self.logger.debug(f"{verb} {srv_name} done")
+
+    async def lifecycleStartup(self):
+        """Startup nav2 lifecycle system."""
+        await self._manageLifecycleNodes(ManageLifecycleNodes.Request().STARTUP, "Starting up")
         self.logger.debug("Nav2 is ready for use!")
-        return
 
     async def lifecycleReset(self):
         """Reset nav2 lifecycle system."""
-        self.logger.debug("Resetting lifecycle nodes based on lifecycle_manager.")
-        for srv_name, srv_type in self.node.get_service_names_and_types():
-            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
-                self.logger.debug(f"Resetting {srv_name}")
-                mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
-                while not mgr_client.wait_for_service(timeout_sec=1.0):
-                    self.logger.debug(f"{srv_name} service not available, waiting...")
-                req = ManageLifecycleNodes.Request()
-                req.command = ManageLifecycleNodes.Request().RESET
-                result = await mgr_client.call_async(req)
-                if not result:
-                    self.logger.error(f"Failed to reset {srv_name}")
-                    return
-                self.logger.debug(f"Reset {srv_name}")
-        return
+        await self._manageLifecycleNodes(ManageLifecycleNodes.Request().RESET, "Resetting")
 
     async def lifecycleShutdown(self):
         """Shutdown nav2 lifecycle system."""
-        self.logger.debug("Shutting down lifecycle nodes based on lifecycle_manager.")
-        for srv_name, srv_type in self.node.get_service_names_and_types():
-            if srv_type[0] == "nav2_msgs/srv/ManageLifecycleNodes" and self._owned_lifecycle_service(srv_name):
-                self.logger.debug(f"Shutting down {srv_name}")
-                mgr_client = self.node.create_client(ManageLifecycleNodes, srv_name)
-                while not mgr_client.wait_for_service(timeout_sec=1.0):
-                    self.logger.debug(f"{srv_name} service not available, waiting...")
-                req = ManageLifecycleNodes.Request()
-                req.command = ManageLifecycleNodes.Request().SHUTDOWN
-                result = await mgr_client.call_async(req)
-                if not result:
-                    self.logger.error(f"Failed to shut down {srv_name}")  # handle error
-                    return
-                self.logger.debug(f"Shut down {srv_name}")
+        await self._manageLifecycleNodes(ManageLifecycleNodes.Request().SHUTDOWN, "Shutting down")
         self.logger.info("Nav2 is shut down!")
-        return
 
     async def checkNodeState(self, node_name):
         """Check the state of a node.
@@ -330,14 +256,7 @@ class BasicNavigator:
         return
 
     async def _waitForServer(self):
-        await self._waitForActionServers(
-            [
-                self.nav_to_pose_client,
-                self.follow_path_client,
-                self.compute_path_to_pose_client,
-                self.smoother_client,
-            ]
-        )
+        await self._waitForActionServers([self.nav_to_pose_client])
         await self._waitForCostmapServices()
         return
 
@@ -345,7 +264,7 @@ class BasicNavigator:
         for client in clients:
             while not client.wait_for_server(timeout_sec=1.0):
                 self.logger.debug(
-                    f"{client.action_name} action server not available, waiting..."
+                    f"{client._action_name} action server not available, waiting..."
                 )
         self.logger.debug("All action servers are available.")
         return
@@ -366,10 +285,3 @@ class BasicNavigator:
         self.go_to_pose_status = self.getResult(self.go_to_pose_result)
         self.logger.debug(f"Go to pose status: {self.go_to_pose_status}")
         self._loop.call_soon_threadsafe(self.go_to_pose_event.set)
-
-    def _follow_path_result_callback(self, future):
-        self.logger.debug("Received action result message")
-        self.follow_path_result = future.result()
-        self.follow_path_status = self.getResult(self.follow_path_result)
-        self.logger.debug(f"Follow path status: {self.follow_path_status}")
-        self._loop.call_soon_threadsafe(self.follow_path_event.set)

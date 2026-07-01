@@ -2,6 +2,8 @@ experiments:
   - social_nav
   - social_nav_multirobot
   - social_nav_formation
+  - formation_passing
+  - formation_passing_tb3
   - social_env_test
   - social_nav_test
   - social_env_7_test
@@ -95,6 +97,99 @@ social_nav_formation:
     arguments:
       robots: "{robots}"
       odom_topic: ground_truth
+      people_topic: /people
+      use_sim_time: "true"
+
+formation_passing:
+  task:
+    formation
+  goals_and_poses:
+    goals_and_poses/formation_passing.yaml
+  map:
+    maps/corridor.yaml
+  world:
+    corridor.world
+  world_pkg_name:
+    gazebo_sim
+  agents_configuration_file:
+    agents_envs/passing/agents.yaml
+  config_pkg_name:
+    gazebo_sim
+  camera_config_file:
+    camera_configs/corridor.yaml
+  # Two robots hold formation (swarm_control hybrid orchestrator) down the
+  # corridor while the passing agents walk the other way. Same swarm wiring as
+  # social_nav_formation: one centroid goal -> the orchestrator's
+  # /navigate_to_pose, fanned out to the per-robot workers.
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      robots: "{robots}"
+      odom_topic: ground_truth
+      people_topic: /people
+      use_sim_time: "true"
+
+formation_passing_tb3:
+  task:
+    formation
+  goals_and_poses:
+    goals_and_poses/formation_passing_tb3.yaml
+  map:
+    maps/corridor.yaml
+  world:
+    corridor.world
+  world_pkg_name:
+    gazebo_sim
+  agents_configuration_file:
+    agents_envs/passing/agents.yaml
+  config_pkg_name:
+    gazebo_sim
+  camera_config_file:
+    camera_configs/corridor.yaml
+  # Three TurtleBot3 burgers (least-sensor variant) hold formation via
+  # swarm_control's hybrid orchestrator down the corridor while the passing agents
+  # walk the other way. Same swarm wiring as formation_passing, but TB3's diff-drive
+  # plugin publishes odometry on /<ns>/odom (no ground_truth plugin), so odom_topic
+  # is odom here.
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      robots: "{robots}"
+      odom_topic: odom
+      people_topic: /people
+      use_sim_time: "true"
+
+formation_crossing:
+  task:
+    formation
+  goals_and_poses:
+    goals_and_poses/formation_crossing.yaml
+  map:
+    maps/experiment.yaml
+  map_pkg_name:
+    gazebo_experiments
+  world:
+    experiment_room.world
+  world_pkg_name:
+    gazebo_sim
+  agents_configuration_file:
+    agents_envs/crossing/agents.yaml
+  config_pkg_name:
+    gazebo_sim
+  camera_config_file:
+    camera_configs/experiment.yaml
+  # Two robots hold formation (swarm_control hybrid orchestrator) down the
+  # corridor while the passing agents walk the other way. Same swarm wiring as
+  # social_nav_formation: one centroid goal -> the orchestrator's
+  # /navigate_to_pose, fanned out to the per-robot workers.
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      robots: "{robots}"
+      odom_topic: odom
       people_topic: /people
       use_sim_time: "true"
 

@@ -29,6 +29,36 @@ from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.robot import RobotArgs
 
 
+# Models whose entire spawn lives in robot_profiles/launch/<model>_spawn.launch.py
+# (the profile owns the spawn node, description, control and namespacing). jackal
+# and ghost_robot are still spawned inline below for now.
+PROFILE_DISPATCHED = {"turtlebot3"}
+
+# Contract flags a fleet entry may override per-robot (else the global launch arg
+# applies). They map straight onto the spawn contract each profile accepts.
+PER_ROBOT_FLAGS = (
+    "use_gazebo_controllers",
+    "use_collision_sensor",
+    "use_lidar_gpu",
+)
+
+# Extra per-robot keys forwarded verbatim into a PROFILE_DISPATCHED robot's launch
+# (e.g. turtlebot3's sensor toggles). launch rejects launch_arguments the included
+# file does not declare, so only list keys the profile(s) actually declare.
+PROFILE_PASSTHROUGH = (
+    "enable_lidar",
+    "enable_camera",
+)
+
+
+def _flag(value):
+    """Normalise a per-robot flag to the 'true'/'false' string the profiles and
+    xacro expect (YAML decodes booleans, but the contract is string-typed)."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 @dataclass(frozen=True)
 class LaunchArguments(LaunchArgumentsBaseParam):
     """Arguments required to spawn a supported robot and its gazebo controllers."""
@@ -46,7 +76,12 @@ class LaunchArguments(LaunchArgumentsBaseParam):
         description="YAML/JSON-encoded list of robots to spawn, e.g. "
         "\"[{name: r0, model: jackal, spawn: [0,0,0]}]\". When non-empty, the "
         "whole fleet is spawned (one namespaced robot per entry). Empty = spawn "
-        "the single robot described by robot_name/x/y/yaw.",
+        "the single robot described by robot_name/x/y/yaw. Each entry may also "
+        "carry per-robot overrides of the contract flags (use_gazebo_controllers, "
+        "use_collision_sensor, use_lidar_gpu), e.g. \"{name: r1, model: jackal, "
+        "spawn: [2,0,0], use_lidar_gpu: false}\"; absent flags inherit the global "
+        "launch argument. Profile-specific keys are also forwarded, e.g. "
+        "turtlebot3 sensor toggles enable_lidar/enable_camera.",
     )
     x: DeclareLaunchArgument = GazeboCommonArgs.x
     y: DeclareLaunchArgument = GazeboCommonArgs.y
@@ -108,9 +143,24 @@ def _spawn(context, launch_configurations):
     # Fleet path: build each robot's namespaced spawn group directly (no
     # recursive self-include). _spawn_robot_with_controllers already wraps its
     # actions in PushRosNamespace when a namespace is given.
+    global_flags = {
+        "use_gazebo_controllers": use_gazebo_controllers,
+        "use_collision_sensor": use_collision_sensor,
+        "use_lidar_gpu": use_lidar_gpu,
+    }
     actions = [LogInfo(msg=f"Spawning fleet of {len(fleet)} robots")]
     for robot in fleet:
         x, y, yaw = robot.get("spawn", [0.0, 0.0, 0.0])
+        # Each robot may override the contract flags; otherwise inherit the global.
+        per_robot_flags = {
+            flag: _flag(robot[flag]) if flag in robot else global_flags[flag]
+            for flag in PER_ROBOT_FLAGS
+        }
+        # Profile-specific per-robot args (e.g. turtlebot3 sensor toggles); only
+        # those the entry actually sets are forwarded.
+        extra_profile_args = {
+            key: _flag(robot[key]) for key in PROFILE_PASSTHROUGH if key in robot
+        }
         actions += _spawn_robot_with_controllers(
             context,
             robot_name=str(robot.get("model", "jackal")),
@@ -119,9 +169,8 @@ def _spawn(context, launch_configurations):
             y=y,
             z=z,
             yaw=yaw,
-            use_gazebo_controllers=use_gazebo_controllers,
-            use_collision_sensor=use_collision_sensor,
-            use_lidar_gpu=use_lidar_gpu,
+            extra_profile_args=extra_profile_args,
+            **per_robot_flags,
         )
     return actions
 
@@ -137,12 +186,33 @@ def _spawn_robot_with_controllers(
     use_gazebo_controllers,
     use_collision_sensor,
     use_lidar_gpu,
+    extra_profile_args=None,
 ):
-    # Currently, the only supported robot is Jackal
-    # if more robots are added in the future, a conditional statement can be added
-    # to check the robot_name and spawn the corresponding robot with its controllers
-    # For example:
     namespace = namespace.strip("/")
+
+    # Profile-owned robots: dispatch the whole spawn (node + description + control
+    # + namespacing) to robot_profiles/launch/<model>_spawn.launch.py. The profile
+    # self-namespaces, so return its include directly. jackal/ghost_robot are still
+    # handled inline below; migrating them here is the dispatch refactor (separate).
+    if robot_name in PROFILE_DISPATCHED:
+        return [
+            include_scoped_launch_py_description(
+                pkg_name="robot_profiles",
+                paths=["launch", f"{robot_name}_spawn.launch.py"],
+                launch_arguments={
+                    "namespace": namespace,
+                    "x": str(x),
+                    "y": str(y),
+                    "z": str(z),
+                    "yaw": str(yaw),
+                    "use_gazebo_controllers": use_gazebo_controllers,
+                    "use_collision_sensor": use_collision_sensor,
+                    "use_lidar_gpu": use_lidar_gpu,
+                    **(extra_profile_args or {}),
+                },
+            )
+        ]
+
     actions = []
 
     # The Gazebo entity name must be unique. In fleet mode several robots share

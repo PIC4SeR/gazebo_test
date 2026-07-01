@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from launch.actions import OpaqueFunction
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_test.launch_arguments.exp_manager import ExperimentManagerArgs
+from gazebo_test.launch_arguments.navigation import NavigationArgs
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     goals_and_poses_file: DeclareLaunchArgument = (
         ExperimentManagerArgs.goals_and_poses_file
     )
+    experiment_name: DeclareLaunchArgument = ExperimentManagerArgs.experiment_name
     wait_before_start: DeclareLaunchArgument = ExperimentManagerArgs.wait_before_start
     exp_config_pkg: DeclareLaunchArgument = ExperimentManagerArgs.exp_config_pkg
     checkpoint_dsn: DeclareLaunchArgument = ExperimentManagerArgs.checkpoint_dsn
@@ -42,6 +44,8 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     watchdog_required_nodes: DeclareLaunchArgument = (
         ExperimentManagerArgs.watchdog_required_nodes
     )
+    task: DeclareLaunchArgument = ExperimentManagerArgs.task
+    params_file: DeclareLaunchArgument = NavigationArgs.params_file
 
 
 def launch_setup(context, *args, **kwargs):
@@ -70,9 +74,11 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             parameters,
             # Navigation config file used, recorded in the results provenance.
-            {"nav_params_file": LaunchConfiguration("nav_params_file").perform(context)},
+            {"params_file": LaunchConfiguration("params_file").perform(context)},
             # Selects the experiment task (go_to_pose | multirobot | ...).
             {"task": LaunchConfiguration("task").perform(context)},
+            # Results sub-folder identifier (empty -> goals_and_poses stem).
+            {"experiment_name": LaunchConfiguration("experiment_name").perform(context)},
         ],
     )
     return [node]
@@ -84,20 +90,5 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     launch_arguments.add_to_launch_description(ld)
-    ld.add_action(
-        DeclareLaunchArgument(
-            "nav_params_file",
-            default_value="",
-            description="Navigation parameters/config file used (recorded for provenance).",
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            "task",
-            default_value="go_to_pose",
-            description="Experiment task: 'go_to_pose' (single robot) or "
-            "'multirobot' (fleet).",
-        )
-    )
     ld.add_action(OpaqueFunction(function=launch_setup))
     return ld

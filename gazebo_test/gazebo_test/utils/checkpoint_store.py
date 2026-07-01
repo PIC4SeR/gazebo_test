@@ -461,7 +461,7 @@ class ExperimentCheckpointStore:
             connect_timeout=self._connect_timeout,
         ) as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(sql.SQL(query), params)
+                cur.execute(query, params)
                 rows = cur.fetchall()
         return [ExperimentJob(**row) for row in rows]
 
@@ -723,11 +723,8 @@ class ExperimentJobCoordinator:
     def resubmit_failed_jobs(self) -> None:
         if self._store is None:
             return
-        requeue_failed = getattr(self._store, "requeue_failed_jobs", None)
-        if not callable(requeue_failed):
-            return
         try:
-            recovered_failed = requeue_failed(
+            recovered_failed = self._store.requeue_failed_jobs(
                 algorithm=self._algorithm_name,
                 experiment_identifier=self._experiment_identifier,
             )

@@ -18,21 +18,15 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile
 
 
-LogLevelValue = Union[int, float, str, bytes, bytearray]
+LogLevelValue = Union[int, str]
 MissingNodesCallback = Callable[[Set[str]], Awaitable[None]]
 RawPatternInput = Union[str, Iterable[str], None]
 
 
 def coerce_ros_log_level(value: LogLevelValue) -> int:
     """Normalise ROS log level values to plain integers."""
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (bytes, bytearray)):
-        return int.from_bytes(value, byteorder="little", signed=False)
     if isinstance(value, int):
         return value
-    if isinstance(value, float):
-        return int(value)
     if isinstance(value, str):
         cleaned = value.strip().lower()
         lookup = {

@@ -1,0 +1,45 @@
+# Formation PASSING scenario (formation task). A 2-robot formation translates
+# down the corridor (right -> left) while the four HuNav agents walk the opposite
+# way (left -> right, see agents_envs/passing/agents.yaml); the swarm must hold
+# formation while passing the oncoming stream head-on.
+#
+# Mirrors the benchmark single-robot `passing` scenario (corridor map/world,
+# robot from x~6.5 -> x~-4) but for two robots kept in formation by
+# swarm_control's hybrid orchestrator. Same fleet schema as social_nav_formation:
+# a `robots:` list, per-episode start `poses:` and a single swarm `centroid:`
+# target -- no per-robot goals.
+robots:
+  - name: jackal                    # first robot's name must be a valid model id
+    model: jackal
+    spawn: [6.5, 0.45, 3.140]       # x, y, theta spawn pose in Gazebo
+  - name: jackal1
+    model: jackal
+    spawn: [6.5, -0.45, 3.140]
+
+goal_name: "goal_box"               # the centroid is visualized as this box
+map_path: "maps/corridor.yaml"
+
+episodes:
+  - episode_1
+  - episode_2
+
+# Initial formation per episode (one start pose per robot). The swarm holds this
+# relative shape (set by swarm_control's gains) while translating left.
+poses:
+  # Line-abreast: the two robots side by side across the corridor. Spaced at
+  # y = +/-0.45 (0.90 m centre-to-centre) so two ~0.43 m-wide Jackals keep ~0.47 m
+  # clearance -- roughly double the old +/-0.35 -- to avoid clipping each other
+  # while the oncoming agents thread between/past them.
+  episode_1:
+    jackal: [6.5, 0.45, 3.140]
+    jackal1: [6.5, -0.45, 3.140]
+  # Column: one behind the other along the corridor (a narrower footprint to
+  # thread the oncoming stream).
+  episode_2:
+    jackal: [7.0, 0.0, 3.140]
+    jackal1: [5.8, 0.0, 3.140]
+
+# Single swarm target centroid per episode -- the far (left) end of the corridor.
+centroid:
+  episode_1: [-4.0, 0.0]
+  episode_2: [-4.0, 0.0]

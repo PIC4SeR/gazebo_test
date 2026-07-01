@@ -98,10 +98,11 @@ class MultiRobotGoToPoseTask(ExperimentTask):
                 self._make_collision_callback(ns),
                 10,
             )
-        if self.manager.use_recorder or self.manager.use_evaluator:
-            self.manager.get_logger().warning(
-                "Bag recording and HuNav evaluation are not supported in "
-                "multi-robot mode yet; ignoring them for this run."
+        if self.manager.use_recorder:
+            # Register every robot's namespaced topics so the bag captures the
+            # whole fleet (per-robot cmd_vel, scan, odom, plan, tf, collision...).
+            self.manager.bag_recorder.add_robot_namespaces(
+                [robot["name"] for robot in self.fleet]
             )
         await asyncio.gather(
             *(nh.initialize_navigation() for nh in self.navigators.values())
@@ -137,18 +138,38 @@ class MultiRobotGoToPoseTask(ExperimentTask):
             self._collision_event[ns].clear()
             self._collision_result[ns] = None
 
+        # Per-robot goals for both navigation and evaluation (matched by name).
+        robot_goal_poses = {
+            ns: get_posestamped_from_entity(goals[ns], "map")
+            for ns in self.navigators
+        }
+
+        # The evaluator records the whole fleet (robot_states carries every robot)
+        # and scores each robot against its own goal.
+        if manager.use_evaluator:
+            manager.get_logger().info("Starting hunav evaluator recording ...")
+            await manager.hunav_evaluator_handler.start_recording(
+                goal=next(iter(robot_goal_poses.values())),
+                experiment_tag=experiment_tag,
+                run_id=run_id,
+                robot_goals=robot_goal_poses,
+            )
+
+        if manager.use_recorder:
+            manager.bag_recorder.start_recording(experiment_tag, str(run_id))
+            manager.bag_recorder.set_goals(robot_goal_poses)
+
         manager.get_logger().debug(
             f"Driving {len(self.navigators)} robots to their goals"
         )
+        episode_result = ExperimentResult.FAILURE_TIMEOUT
         try:
             # ponytail: wall-clock timeout (sim usually runs ~realtime). Switch to
             # a sim-time ROS timer like the single-robot evaluator if RTF drifts.
             results = await asyncio.wait_for(
                 asyncio.gather(
                     *(
-                        self._run_single_robot(
-                            ns, get_posestamped_from_entity(goals[ns], "map")
-                        )
+                        self._run_single_robot(ns, robot_goal_poses[ns])
                         for ns in self.navigators
                     )
                 ),
@@ -160,6 +181,13 @@ class MultiRobotGoToPoseTask(ExperimentTask):
                 f"Episode '{experiment_tag}' timed out before all robots reached goal"
             )
             episode_result = ExperimentResult.FAILURE_TIMEOUT
+        finally:
+            if manager.use_evaluator:
+                await manager.hunav_evaluator_handler.stop_recording()
+                manager.get_logger().info("Hunav evaluator recording stopped")
+            if manager.use_recorder:
+                manager.bag_recorder.set_result_and_stop_recording(str(episode_result))
+                manager.get_logger().info("Bag recording stopped")
 
         await self.cancel()
         manager.get_logger().info(

@@ -59,11 +59,22 @@ class HunavEvaluatorHandler:
                 self.logger.debug(f"Waiting for {client.srv_name} service...")
 
     async def start_recording(
-        self, goal: PoseStamped, experiment_tag: str, run_id: int
+        self,
+        goal: PoseStamped,
+        experiment_tag: str,
+        run_id: int,
+        robot_goals: Optional[dict] = None,
     ) -> bool:
         """
         Start the hunav evaluator recording.
         This method will call the hunav_start_recording service.
+
+        Args:
+            goal: fallback goal applied to robots without a per-robot goal.
+            experiment_tag: experiment identifier.
+            run_id: run identifier.
+            robot_goals: optional {robot_name: PoseStamped} for fleet experiments;
+                each robot is then evaluated against its own goal.
 
         Returns:
             bool: True if the service call was successful, False otherwise.
@@ -71,6 +82,9 @@ class HunavEvaluatorHandler:
         self.logger.debug("Starting hunav evaluator recording...")
         req = StartEvaluation.Request()
         req.robot_goal = goal
+        if robot_goals:
+            req.robot_goal_names = list(robot_goals.keys())
+            req.robot_goals = list(robot_goals.values())
         req.experiment_tag = experiment_tag
         req.run_id = run_id
         self.metrics_path = Path(

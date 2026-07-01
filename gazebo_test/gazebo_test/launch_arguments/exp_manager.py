@@ -58,6 +58,14 @@ class ExperimentManagerArgs:
         default_value="",
         description="Path to the YAML file containing goals and poses",
     )
+    experiment_name: DeclareLaunchArgument = DeclareLaunchArgument(
+        "experiment_name",
+        default_value="",
+        description=(
+            "Experiment identifier used as the results sub-folder. "
+            "When empty, falls back to the goals_and_poses_file stem."
+        ),
+    )
     exp_config_pkg: DeclareLaunchArgument = DeclareLaunchArgument(
         "exp_config_pkg",
         default_value="gazebo_experiments",
@@ -90,4 +98,9 @@ class ExperimentManagerArgs:
             "Comma-separated required node names for the experiment watchdog. "
             "Use 'none' to disable node checks."
         ),
+    )
+    task: DeclareLaunchArgument = DeclareLaunchArgument(
+        "task",
+        default_value="go_to_pose",
+        description="Selects the experiment task (go_to_pose | multirobot | ...).",
     )

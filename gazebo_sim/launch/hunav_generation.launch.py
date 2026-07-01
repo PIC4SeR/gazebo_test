@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from launch_pal.arg_utils import LaunchArgumentsBase
 from launch.substitutions import LaunchConfiguration
 
+import yaml
+
 # import execute_process
 from launch.actions import ExecuteProcess
 
@@ -37,6 +39,14 @@ class LaunchArguments(LaunchArgumentsBase):
     use_gazebo_obs: DeclareLaunchArgument = HunavArgs.use_gazebo_obs
     update_rate: DeclareLaunchArgument = HunavArgs.update_rate
     robot_name: DeclareLaunchArgument = GazeboCommonArgs.robot_name
+    robots: DeclareLaunchArgument = DeclareLaunchArgument(
+        "robots",
+        default_value="",
+        description="YAML/JSON-encoded fleet list (same format as "
+        "spawn_robot.launch.py). When set, HuNav tracks EVERY robot in the fleet "
+        "socially (one <robot_name> SDF element per robot). Empty = the single "
+        "robot_name.",
+    )
     global_frame_to_publish: DeclareLaunchArgument = HunavArgs.global_frame_to_publish
     ignore_models: DeclareLaunchArgument = HunavArgs.ignore_models
     use_navgoal_to_start: DeclareLaunchArgument = HunavArgs.use_navgoal_to_start
@@ -72,6 +82,17 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
         paths=["worlds", LaunchConfiguration("base_world")],
     ).perform(context)
 
+    # In fleet mode HuNav tracks every robot socially: one <robot_name> SDF
+    # element per fleet entry (the namespace == Gazebo entity name). Otherwise
+    # fall back to the single robot_name.
+    robots_raw = LaunchConfiguration("robots").perform(context).strip()
+    fleet = yaml.safe_load(robots_raw) if robots_raw else []
+    if fleet:
+        robot_names = [str(r["name"]) for r in fleet]
+    else:
+        robot_names = [_resolve_config("robot_name")]
+    LogInfo(msg="HuNav social robots: " + ", ".join(robot_names)).execute(context)
+
     hunav_gazebo_worldgen_node = Node(
         package="hunav_gazebo_wrapper",
         executable="hunav_gazebo_world_generator",
@@ -80,7 +101,7 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
             {"base_world": world_file},
             {"use_gazebo_obs": _resolve_config("use_gazebo_obs")},
             {"update_rate": _resolve_config("update_rate")},
-            {"robot_name": _resolve_config("robot_name")},
+            {"robot_names": robot_names},
             {"global_frame_to_publish": _resolve_config("global_frame_to_publish")},
             {"use_navgoal_to_start": _resolve_config("use_navgoal_to_start")},
             {"ignore_models": _resolve_config("ignore_models")},
@@ -125,12 +146,17 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
         )
     )
 
+    # The manager also receives the scenario file so it can read the human
+    # motion-model selection (default_motion_model / orca.* / per-agent
+    # motion_model). Files keyed by a specific node name (e.g. `hunav_loader:`)
+    # simply won't apply here, keeping SFM the default; files keyed under `/**:`
+    # apply to the manager too.
     hunav_manager_node = Node(
         package="hunav_agent_manager",
         executable="hunav_agent_manager",
         name="hunav_agent_manager",
         output="screen",
-        parameters=[{"use_sim_time": _resolve_config("use_sim_time")}],
+        parameters=[agent_conf_file, {"use_sim_time": _resolve_config("use_sim_time")}],
     )
 
     return [

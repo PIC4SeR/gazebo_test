@@ -1,0 +1,72 @@
+# Formation CROSSING scenario, TurtleBot3 edition (formation task). A 3-robot
+# formation translates down the corridor (right -> left) while the four HuNav
+# agents walk the opposite way (left -> right, see agents_envs/passing/agents.yaml);
+# the swarm must hold formation while passing the oncoming stream head-on.
+#
+# Same fleet schema and swarm wiring as `formation_crossing`, but the robots are
+# TurtleBot3 burgers instead of Jackals. Burger is the least-sensor TurtleBot3
+# variant -- lidar + imu only, no camera (waffle/waffle_pi add the camera). The
+# variant is the canonical `TURTLEBOT3_MODEL` env var (defaults to burger in the
+# turtlebot3 profile), and we additionally pin `enable_camera: false` per robot so
+# the camera is dropped from the SDF even if someone launches with
+# TURTLEBOT3_MODEL=waffle -- the experiment stays minimal-sensor by construction.
+# (lidar stays on: it is the only exteroceptive sensor and the formation/nav term
+# needs it.)
+#
+# TurtleBot3's diff-drive plugin publishes odometry on `/<ns>/odom` (no
+# ground_truth plugin like Jackal), so the swarm_control launch below reads
+# odom_topic: odom -- see experiments.yaml.
+robots:
+  - name: turtlebot3                # first robot's name must be a valid model id
+    model: turtlebot3               # (the CLI passes it as robot_name:= for HuNav)
+    spawn: [0.0, -4.25, 1.57]          # x, y, theta spawn pose in Gazebo
+    enable_camera: false            # least-sensor: drop the camera (no-op on burger)
+  - name: turtlebot3_1
+    model: turtlebot3
+    spawn: [0.0, -3.65, 1.57]
+    enable_camera: false
+  - name: turtlebot3_2
+    model: turtlebot3
+    spawn: [0.0, -4.85, 1.57]
+    enable_camera: false
+
+goal_name: "goal_box"               # the centroid is visualized as this box
+map_path: "maps/experiment.yaml"
+
+episodes:
+  - episode_1
+  - episode_2
+  - episode_3
+  - episode_4
+
+# Initial formation per episode (one start pose per robot). The swarm holds this
+# relative shape (set by swarm_control's gains) while translating left.
+
+poses: # The poses of the robot in x, y, theta
+  # Line-abreast: the three robots side by side across the corridor.
+  episode_1:
+    turtlebot3: [0.0, -4.25, 1.57]
+    turtlebot3_1: [0.0, -3.65, 1.57]
+    turtlebot3_2: [0.0, -4.85, 1.57]
+  # Column: nose-to-tail along the corridor (a narrow footprint to thread the
+  # oncoming stream).
+  episode_2:
+    turtlebot3: [0.0, -4.25, -1.57]
+    turtlebot3_1: [-0.6, -4.25, -1.57]
+    turtlebot3_2: [0.6, -4.25, -1.57]
+
+  episode_3: 
+    turtlebot3: [0.0, 3.25, -1.57]
+    turtlebot3_1: [0.0, 2.65, -1.57]
+    turtlebot3_2: [0.0, 3.85, -1.57]
+  
+  episode_4:
+    turtlebot3: [0.0, 3.25, 1.57]
+    turtlebot3_1: [-0.6, 3.25, 1.57]
+    turtlebot3_2: [0.6, 3.25, 1.57]
+# Single swarm target centroid per episode
+centroid: 
+  episode_1: [0.0, 4.25]
+  episode_2: [0.0, 4.25]
+  episode_3: [0.0, -4.25]
+  episode_4: [0.0, -4.25]

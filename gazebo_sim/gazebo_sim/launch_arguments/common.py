@@ -24,13 +24,15 @@ class GazeboCommonArgs:
     robot_name: DeclareLaunchArgument = DeclareLaunchArgument(
         "robot_name",
         default_value="jackal",
-        description="Name of the robot. ",
+        description="Model id of the robot to spawn. Must match a profile in the "
+        "robot_profiles package (launch/<model>_spawn.launch.py).",
+        # Only models that actually have a spawn profile. Add an entry here when a
+        # new robot_profiles/launch/<model>_spawn.launch.py lands -- not before, or
+        # selecting it spawns an entity with no description/controllers.
         choices=[
-            "pmb2",
             "jackal",
-            "turtlebot3",
-            "turtlebot3_waffle",
             "ghost_robot",
+            "turtlebot3",
         ],
     )
     world_name: DeclareLaunchArgument = DeclareLaunchArgument(
