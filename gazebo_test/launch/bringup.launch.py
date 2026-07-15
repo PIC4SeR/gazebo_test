@@ -64,10 +64,9 @@ class LaunchArguments(LaunchArgumentsBase):
     )
 
 
-def _single_bringup_group():
+def _single_bringup_group(context):
     """The single-stack Nav2 bringup (one namespace)."""
     namespace = LaunchConfiguration("namespace")
-    use_namespace = LaunchConfiguration("use_namespace")
     map = LaunchConfiguration("map")
     use_sim_time = LaunchConfiguration("use_sim_time")
     params_file = LaunchConfiguration("params_file")
@@ -87,15 +86,15 @@ def _single_bringup_group():
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {"use_sim_time": use_sim_time, "yaml_filename": map}
 
-    # Only it applys when `use_namespace` is True.
-    # '<robot_namespace>' keyword shall be replaced by 'namespace' launch argument
-    # in config file 'nav2_multirobot_params.yaml' as a default & example.
-    # User defined config file should contain '<robot_namespace>' keyword for the replacements.
-    # params_file = ReplaceString(
-    #     source_file=params_file,
-    #     replacements={"<robot_namespace>": ("/", namespace)},
-    #     condition=IfCondition(use_namespace),
-    # )
+    # The obstacle layer's scan topic must be absolute: Nav2 resolves a relative
+    # name against the costmap's own nested namespace (/<ns>/local_costmap), not
+    # the robot's. Templates write '<robot_namespace>/front/scan'; fill it in here,
+    # eagerly, because the scoped include below is a fresh launch scope.
+    ns = namespace.perform(context).strip("/")
+    params_file = ReplaceString(
+        source_file=params_file,
+        replacements={"<robot_namespace>": f"/{ns}" if ns else ""},
+    ).perform(context)
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -150,7 +149,7 @@ def _bringup(context, *args, **kwargs):
         raise ValueError("'robots' must decode to a list of robot mappings")
 
     if not fleet:
-        return [_single_bringup_group()]
+        return [_single_bringup_group(context)]
 
     # Fleet path: re-enter this launch file once per namespaced robot. Each child
     # gets robots="" so it takes the single-stack path.

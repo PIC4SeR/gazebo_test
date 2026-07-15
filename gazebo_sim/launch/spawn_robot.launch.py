@@ -32,7 +32,7 @@ from gazebo_sim.launch_arguments.robot import RobotArgs
 # Models whose entire spawn lives in robot_profiles/launch/<model>_spawn.launch.py
 # (the profile owns the spawn node, description, control and namespacing). jackal
 # and ghost_robot are still spawned inline below for now.
-PROFILE_DISPATCHED = {"turtlebot3"}
+PROFILE_DISPATCHED = {"turtlebot3", "turtlebot2"}
 
 # Contract flags a fleet entry may override per-robot (else the global launch arg
 # applies). They map straight onto the spawn contract each profile accepts.

@@ -118,8 +118,8 @@ class BasicNavigator:
             None
         """
         self.logger.debug("Canceling current task.")
-        if self.go_to_pose_result:
-            future = await self.go_to_pose_goal_handle.cancel_goal_async()
+        if self.go_to_pose_result and not self.go_to_pose_result.done():
+            await self.go_to_pose_goal_handle.cancel_goal_async()
 
     def getResult(self, goal_result: GoalStatus) -> TaskResult:
         """Get the pending action result message

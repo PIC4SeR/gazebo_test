@@ -1,0 +1,97 @@
+# Perturbation scenario, TurtleBot3 edition (perturbation task). Three robots
+# start already in formation and must hold their GROUP CENTER steady for the
+# whole episode while the HuNav agents push through/around the swarm
+# (see agents_envs/crossing/agents.yaml). Unlike the formation task there is no
+# distant centroid to reach: the swarm's target is its own group center, so the
+# perturbation task defaults the hold point to the mean of each episode's start
+# poses below (no 'centroid:' block needed). Success = the swarm survives the
+# full timeout window without a collision (it held station); a collision fails.
+#
+# Same fleet schema and swarm wiring as `formation_crossing`: TurtleBot3 burgers
+# (least-sensor variant, lidar + imu only) driven by swarm_control's hybrid
+# orchestrator. TB3's diff-drive plugin publishes odometry on /<ns>/odom, so the
+# swarm_control launch reads odom_topic: odom (see experiments.yaml).
+robots:
+  - name: turtlebot3                # first robot's name must be a valid model id
+    model: turtlebot3               # (the CLI passes it as robot_name:= for HuNav)
+    spawn: [0.0, -0.6, 0.0]         # x, y, theta spawn pose in Gazebo
+    enable_camera: false            # least-sensor: drop the camera (no-op on burger)
+  - name: turtlebot3_1
+    model: turtlebot3
+    spawn: [0.0, 0.0, 0.0]
+    enable_camera: false
+  - name: turtlebot3_2
+    model: turtlebot3
+    spawn: [0.0, 0.6, 0.0]
+    enable_camera: false
+  - name: jackal
+    model: jackal
+    spawn: [0.0, 1.2, 0.0]
+    enable_camera: false
+  - name: turtlebot2
+    model: turtlebot2
+    spawn: [0.0, 2.4, 0.0]
+    enable_camera: false 
+  - name: turtlebot2_1
+    model: turtlebot2
+    spawn: [0.0, 1.8, 0.0]
+    enable_camera: false
+goal_name: "goal_box"               # the held centroid is visualized as this box
+map_path: "maps/experiment.yaml"
+
+# Fail the episode if the swarm's live group center (ground-truth, world frame)
+# strays more than this many metres from the hold point; polled this often.
+# Optional -- these are the task defaults.
+drift_tolerance: 0.75               # metres
+drift_poll_period: 0.5              # seconds
+
+episodes:
+  - episode_1
+  - episode_2
+  - episode_3
+  - episode_4
+
+# Initial formation per episode (one start pose per robot). The swarm holds this
+# relative shape (set by swarm_control's gains) AND keeps its group center fixed
+# at the mean of these poses for the whole episode.
+
+poses: # The poses of the robot in x, y, theta
+  # Column across the corridor, centered on the origin: center = (0, 0).
+  episode_1:
+    turtlebot3: [0.0, -0.6, 0.0]
+    turtlebot3_1: [0.0, 0.0, 0.0]
+    turtlebot3_2: [0.0, 0.6, 0.0]
+    jackal: [0.0, 1.2, 0.0]
+    turtlebot2: [0.0, 2.4, 0.0]
+    turtlebot2_1: [0.0, 1.8, 0.0]
+
+  # Line-abreast along the corridor, centered on the origin: center = (0, 0).
+  episode_2:
+    turtlebot3: [-0.6, 0.0, 1.57]
+    turtlebot3_1: [0.0, 0.0, 1.57]
+    turtlebot3_2: [0.6, 0.0, 1.57]
+    jackal: [1.2, 0.0, 1.57]
+    turtlebot2: [2.4, 0.0, 1.57]  
+    turtlebot2_1: [1.8, 0.0, 1.57]
+  # Triangle wedge, centered near the origin.
+  episode_3:
+    turtlebot3: [0.4, 0.0, 3.14]
+    turtlebot3_1: [-0.4, 0.4, 3.14]
+    turtlebot3_2: [-0.4, -0.4, 3.14]
+    jackal: [0.4, -0.4, 3.14]
+    turtlebot2: [2.4, -0.4, 3.14]
+    turtlebot2_1: [1.8, -0.4, 3.14]
+  # Tight cluster, centered on the origin.
+  episode_4:
+    turtlebot3: [0.0, -0.4, 1.57]
+    turtlebot3_1: [-0.4, 0.3, 1.57]
+    turtlebot3_2: [0.4, 0.3, 1.57]
+    jackal: [0.0, 0.6, 1.57]
+    turtlebot2: [0.0, 1.4, 1.57]
+    turtlebot2_1: [0.0, 1.0, 1.57]
+
+# 'centroid:' is intentionally omitted -- the perturbation task defaults each
+# episode's hold point to the mean of its start poses above. Uncomment to force
+# the swarm to hold a point offset from where it spawned, e.g.:
+# centroid:
+#   episode_1: [0.0, 0.0]

@@ -4,6 +4,8 @@ experiments:
   - social_nav_formation
   - formation_passing
   - formation_passing_tb3
+  - perturbation
+  - perturbation_tb2
   - social_env_test
   - social_nav_test
   - social_env_7_test
@@ -29,7 +31,8 @@ experiments:
 # Optional robot/simulator render overrides passed to the nav2_profiles template
 # renderer (a YAML mapping). Resolved against robot_config_pkg_name/config/ when
 # the path is relative; defaults to the experiment package. Omit to use the
-# gazebo_test sim defaults (odom_topic=jackal/ground_truth, bt_xml_pkg=gazebo_test).
+# gazebo_test sim defaults (odom_topic=ground_truth, people_topic=detected_people,
+# bt_xml_pkg=gazebo_test).
 # robot_config_file: robot_configs/my_robot.yaml
 # robot_config_pkg_name: my_pkg   # optional; defaults to the experiment package
 #   # my_robot.yaml contents, e.g.:
@@ -149,15 +152,18 @@ formation_passing_tb3:
     camera_configs/corridor.yaml
   # Three TurtleBot3 burgers (least-sensor variant) hold formation via
   # swarm_control's hybrid orchestrator down the corridor while the passing agents
-  # walk the other way. Same swarm wiring as formation_passing, but TB3's diff-drive
-  # plugin publishes odometry on /<ns>/odom (no ground_truth plugin), so odom_topic
-  # is odom here.
+  # walk the other way. Same swarm wiring as formation_passing, including
+  # odom_topic: the turtlebot3 profile injects jackal's pose3d ground-truth plugin,
+  # so TB3 publishes map-frame odometry on ground_truth like every other robot.
+  # (TB3's diff-drive `odom` is spawn-relative -- each robot's frame origin sits at
+  # its own spawn pose -- so the swarm's formation and social terms, which compare
+  # robots to each other and to map-frame humans, cannot use it.)
   navigation_launch:
     package: swarm_control
     launch: hybrid.launch.py
     arguments:
       robots: "{robots}"
-      odom_topic: odom
+      odom_topic: ground_truth
       people_topic: /people
       use_sim_time: "true"
 
@@ -183,15 +189,97 @@ formation_crossing:
   # Two robots hold formation (swarm_control hybrid orchestrator) down the
   # corridor while the passing agents walk the other way. Same swarm wiring as
   # social_nav_formation: one centroid goal -> the orchestrator's
-  # /navigate_to_pose, fanned out to the per-robot workers.
+  # /navigate_to_pose, fanned out to the per-robot workers. ground_truth (not the
+  # spawn-relative diff-drive odom) is the only map-frame odometry the swarm's
+  # formation/social terms can be computed in -- see formation_passing_tb3.
   navigation_launch:
     package: swarm_control
     launch: hybrid.launch.py
     arguments:
       robots: "{robots}"
-      odom_topic: odom
+      odom_topic: ground_truth
       people_topic: /people
       use_sim_time: "true"
+
+perturbation:
+  task:
+    perturbation
+  goals_and_poses:
+    goals_and_poses/perturbation.yaml
+  map:
+    maps/experiment.yaml
+  map_pkg_name:
+    gazebo_experiments
+  world:
+    experiment_room.world
+  world_pkg_name:
+    gazebo_sim
+  agents_configuration_file:
+    agents_envs/perturbation/agents.yaml
+  config_pkg_name:
+    gazebo_sim
+  camera_config_file:
+    camera_configs/experiment.yaml
+  # Three TurtleBot3 burgers start in formation and hold their group center
+  # steady (swarm_control hybrid orchestrator, one hold-point goal) while the
+  # crossing agents push through/around them. Same swarm wiring as
+  # formation_crossing; the perturbation task runs the full timeout window and
+  # counts a collision-free run as success. convergence_criterion 'hold' keeps
+  # the workers alive all episode -- with the default criterion the orchestrator
+  # converges ~1 s in (the swarm starts AT its goal), cancels the workers, and
+  # the uncontrolled fleet gets shoved into an instant drift failure.
+  # ground_truth (not the spawn-relative diff-drive odom) is the only map-frame
+  # odometry the swarm's formation/social terms can be computed in -- see
+  # formation_passing_tb3. This matters most here: station-keeping is judged
+  # against a map-frame hold point.
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      robots: "{robots}"
+      odom_topic: ground_truth
+      people_topic: /people
+      use_sim_time: "true"
+      convergence_criterion: hold
+
+perturbation_tb2:
+  task:
+    perturbation
+  goals_and_poses:
+    goals_and_poses/perturbation_tb2.yaml
+  map:
+    maps/experiment.yaml
+  map_pkg_name:
+    gazebo_experiments
+  world:
+    experiment_room.world
+  world_pkg_name:
+    gazebo_sim
+  agents_configuration_file:
+    agents_envs/perturbation_tb2/agents.yaml
+  config_pkg_name:
+    gazebo_sim
+  camera_config_file:
+    camera_configs/experiment.yaml
+  # Three TurtleBot2 (kobuki) + one Jackal hold their group center (swarm_control
+  # hybrid orchestrator, one hold-point goal) while three agents cross the swarm
+  # once each from three different directions. Same wiring as `perturbation`,
+  # with one difference: the fleet mixes robots with different odometry stacks
+  # (tb2's diff-drive odom vs jackal's EKF), so the workers read the pose3d
+  # ground_truth topic both profiles publish. convergence_criterion 'hold' keeps
+  # the workers alive all episode (the swarm starts AT its goal).
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      robots: "{robots}"
+      odom_topic: ground_truth
+      people_topic: /people
+      use_sim_time: "true"
+      convergence_criterion: hold
+      # Social-memory feedback form: "false" -> u = u_robot - k_z*z,
+      # "true" -> u = u_robot - k_z*z/||z|| (direction-only versor).
+      z_use_versor: "false"
 
 social_env_test:
   goals_and_poses:

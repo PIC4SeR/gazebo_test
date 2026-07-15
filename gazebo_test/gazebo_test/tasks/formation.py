@@ -95,10 +95,20 @@ class FormationTask(MultiRobotGoToPoseTask):
                 self._make_collision_callback(ns),
                 10,
             )
-        if self.manager.use_recorder or self.manager.use_evaluator:
+        if self.manager.use_recorder:
+            # Same fleet recording as the multi-robot task: every robot's
+            # namespaced topics (ground_truth, cmd_vel, collision, plan, tf...).
+            self.manager.bag_recorder.add_robot_namespaces(
+                [robot["name"] for robot in self.fleet],
+                models={
+                    robot["name"]: robot.get("model", "jackal")
+                    for robot in self.fleet
+                },
+            )
+        if self.manager.use_evaluator:
             self.manager.get_logger().warning(
-                "Bag recording and HuNav evaluation are not supported in "
-                "formation mode yet; ignoring them for this run."
+                "HuNav evaluation is not supported in formation mode yet; "
+                "ignoring it for this run."
             )
         # One swarm-level action client to the hybrid orchestrator. The "action"
         # backend skips Nav2 lifecycle (the orchestrator is a plain action
@@ -141,9 +151,20 @@ class FormationTask(MultiRobotGoToPoseTask):
         manager.get_logger().debug(
             f"Steering swarm of {len(self._robot_names)} robots to centroid {target}"
         )
-        result = await self._drive_swarm(
-            get_posestamped_from_entity(goal_entity, "map"), experiment_tag
-        )
+        goal_pose = get_posestamped_from_entity(goal_entity, "map")
+        if manager.use_recorder:
+            manager.bag_recorder.start_recording(experiment_tag, str(run_id))
+            # The swarm shares one centroid goal; write it on every robot's
+            # goal topic so per-robot extraction sees it.
+            manager.bag_recorder.set_goals(
+                {ns: goal_pose for ns in self._robot_names}
+            )
+        result = ExperimentResult.FAILURE_TIMEOUT
+        try:
+            result = await self._drive_swarm(goal_pose, experiment_tag)
+        finally:
+            if manager.use_recorder:
+                manager.bag_recorder.set_result_and_stop_recording(str(result))
         await self.cancel()
         manager.get_logger().info(
             f"Episode '{experiment_tag}' run {run_id} result: {result}"

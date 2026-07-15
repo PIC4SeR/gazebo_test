@@ -1,18 +1,19 @@
 # Explicit per-node keying (instead of /**) so parameters do not leak to
-# unrelated nodes. The motion-model selection + ORCA tuning are read by BOTH the
+# unrelated nodes. The motion-model strategy + ORCA tuning are read by BOTH the
 # hunav_loader and hunav_agent_manager nodes, so that block is duplicated under
 # each (keep the two copies in sync). The agent definitions are only needed by
 # hunav_loader.
 #
-# Strategy defaults to 'fixed': every human uses default_motion_model unless it
-# has a per-agent `motion_model:` override (all agents here are orca anyway).
-# Per-agent overrides only take effect under the 'fixed' strategy, and for the
-# manager to honor a per-agent override that differs from the default it must
-# also appear under hunav_agent_manager below.
+# motion_model_strategy: random
+#   On every experiment reset (Gazebo world reset -> /reset_agents) each agent
+#   re-draws its motion model uniformly from motion_model_choices.
 
 hunav_agent_manager:
   ros__parameters:
-    default_motion_model: orca
+    motion_model_strategy: random
+    motion_model_choices: [sfm, cv, orca]
+    motion_model_seed: 42          # >=0 -> reproducible; remove/<0 -> random
+    default_motion_model: sfm      # used only if strategy switched to 'fixed'
     orca:
       neighbor_dist: 5.0
       max_neighbors: 10
@@ -24,7 +25,11 @@ hunav_loader:
   ros__parameters:
     map: cafe
     publish_people: true
-    default_motion_model: orca
+    # --- duplicated from hunav_agent_manager (keep in sync) ---
+    motion_model_strategy: random
+    motion_model_choices: [sfm, cv, orca]
+    motion_model_seed: 42
+    default_motion_model: sfm
     orca:
       neighbor_dist: 5.0
       max_neighbors: 10

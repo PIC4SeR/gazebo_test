@@ -46,6 +46,7 @@ class GoToPoseTask(ExperimentTask):
                 "drives a single robot. Use 'task: multirobot' for a fleet."
             )
         ns = self.robot_namespace = fleet[0]["name"]
+        self.robot_model = fleet[0].get("model")
         episodes = list(parsed["initial_state_entities"].keys())
         for episode in episodes:
             if ns not in parsed["goal_entities"].get(episode, {}):
@@ -84,6 +85,14 @@ class GoToPoseTask(ExperimentTask):
             backend=self.manager.navigation_backend,
             namespace=self.robot_namespace,
         )
+        if self.manager.use_recorder:
+            # The lone robot publishes under its own namespace (scan, cmd_vel,
+            # odom, plan, tf, ...), so register those alongside the global
+            # defaults -- same registration the fleet task does.
+            self.manager.bag_recorder.add_robot_namespaces(
+                [self.robot_namespace],
+                models={self.robot_namespace: self.robot_model},
+            )
         await self.navigator.initialize_navigation()
 
     async def run_episode(

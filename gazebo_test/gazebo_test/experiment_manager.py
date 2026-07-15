@@ -433,12 +433,15 @@ class ExperimentManager(Node):
             )
             if self.use_evaluator:
                 hunav_results = self.hunav_evaluator_handler.get_result_df()
-                experiment_outcome = pd.merge(
-                    experiment_outcome,
-                    hunav_results,
-                    on=["experiment_tag", "run_id"],
-                    how="left",
-                )
+                # Empty when the task never recorded (formation mode) or the
+                # metrics file is missing: keep the bare outcome row.
+                if not hunav_results.empty:
+                    experiment_outcome = pd.merge(
+                        experiment_outcome,
+                        hunav_results,
+                        on=["experiment_tag", "run_id"],
+                        how="left",
+                    )
             with self._acquire_outcomes_lock():
                 file_exists = self.experiment_outcomes_path.exists()
                 experiment_outcome.to_csv(

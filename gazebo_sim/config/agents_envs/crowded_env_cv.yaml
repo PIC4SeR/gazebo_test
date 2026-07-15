@@ -1,36 +1,26 @@
 # Explicit per-node keying (instead of /**) so parameters do not leak to
-# unrelated nodes. The motion-model selection + ORCA tuning are read by BOTH the
-# hunav_loader and hunav_agent_manager nodes, so that block is duplicated under
-# each (keep the two copies in sync). The agent definitions are only needed by
-# hunav_loader.
+# unrelated nodes. The motion-model selection is read by BOTH the hunav_loader
+# and hunav_agent_manager nodes, so it is duplicated under each (keep the two
+# copies in sync). The agent definitions are only needed by hunav_loader.
 #
 # Strategy defaults to 'fixed': every human uses default_motion_model unless it
-# has a per-agent `motion_model:` override (all agents here are orca anyway).
+# has a per-agent `motion_model:` override (all agents here are cv anyway).
 # Per-agent overrides only take effect under the 'fixed' strategy, and for the
 # manager to honor a per-agent override that differs from the default it must
 # also appear under hunav_agent_manager below.
+#
+# cv = constant velocity: agents head straight to their current goal at their
+# desired velocity with no obstacle/social avoidance; it takes no tuning params.
 
 hunav_agent_manager:
   ros__parameters:
-    default_motion_model: orca
-    orca:
-      neighbor_dist: 5.0
-      max_neighbors: 10
-      time_horizon: 5.0
-      time_horizon_obst: 5.0
-      obstacle_segment: 0.2
+    default_motion_model: cv
 
 hunav_loader:
   ros__parameters:
     map: cafe
     publish_people: true
-    default_motion_model: orca
-    orca:
-      neighbor_dist: 5.0
-      max_neighbors: 10
-      time_horizon: 5.0
-      time_horizon_obst: 5.0
-      obstacle_segment: 0.2
+    default_motion_model: cv
     agents:
       - agent1
       - agent2
@@ -46,7 +36,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -82,7 +72,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -118,7 +108,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.6
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -154,7 +144,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.4
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -190,7 +180,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -226,7 +216,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.6
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -262,7 +252,7 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0
@@ -298,7 +288,7 @@ hunav_loader:
       group_id: -1
       max_vel: 1.0
       radius: 0.4
-      motion_model: orca
+      motion_model: cv
       behavior:
         type: 1
         configuration: 0

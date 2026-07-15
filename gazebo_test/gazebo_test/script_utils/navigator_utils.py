@@ -7,7 +7,12 @@ Gazebo/Jackal-specific values the retired ``gazebo_navigators`` package used to
 hard-code:
 
 * ``odom_topic`` — the Jackal Gazebo sim publishes ground-truth odometry on
-  ``jackal/ground_truth`` (it is not remapped to ``/odom`` at launch).
+  ``/<ns>/ground_truth``; the Nav2 stack always runs namespaced (lone robot
+  included), so the relative ``ground_truth`` resolves per robot.
+* ``people_topic`` — each Jackal's URDF people-detector plugin (logical
+  camera, enabled via ``JACKAL_PEOPLE_DETECTOR``) publishes FOV-limited
+  detections on ``/<ns>/detected_people``; the relative name resolves per
+  robot. HuNav's omniscient ``/people`` is deliberately NOT used here.
 * ``bt_xml_pkg`` — ``gazebo_test`` ships the custom behaviour trees under
   ``behavior_trees/``.
 
@@ -31,7 +36,8 @@ from nav2_profiles.navigator_utils import (  # noqa: F401  (re-exported)
 
 # Defaults the legacy gazebo_navigators templates baked in for the Jackal sim.
 GAZEBO_RENDER_DEFAULTS: Dict[str, str] = {
-    "odom_topic": "jackal/ground_truth",
+    "odom_topic": "ground_truth",
+    "people_topic": "detected_people",
     "bt_xml_pkg": "gazebo_test",
 }
 

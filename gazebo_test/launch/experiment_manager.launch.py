@@ -74,7 +74,8 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             parameters,
             # Navigation config file used, recorded in the results provenance.
-            {"params_file": LaunchConfiguration("params_file").perform(context)},
+            # The node reads 'nav_params_file' (the launch arg stays 'params_file').
+            {"nav_params_file": LaunchConfiguration("params_file").perform(context)},
             # Selects the experiment task (go_to_pose | multirobot | ...).
             {"task": LaunchConfiguration("task").perform(context)},
             # Results sub-folder identifier (empty -> goals_and_poses stem).

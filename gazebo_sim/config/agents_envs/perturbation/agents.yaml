@@ -1,0 +1,158 @@
+# Perturbation agents: a LIMITED-TIME disturbance for the perturbation task.
+#
+# Unlike every other agents_envs config (all cyclic_goals: true -> agents loop
+# through their goals forever), here each agent walks its goal list exactly ONCE
+# and then stops: cyclic_goals is false and each agent has a single crossing goal
+# on the far side of the swarm. So every agent makes one diagonal pass through
+# the robots' space (centred on the origin, where the perturbation fleet holds
+# station) and then leaves it -- a transient push the swarm must absorb before
+# holding its group center for the rest of the episode.
+#
+# Derived from agents_envs/crossing/agents.yaml (same init poses and far-side
+# goals), with the return goal (g1) dropped and cyclic_goals flipped to false.
+hunav_agent_manager:
+  ros__parameters:
+    default_motion_model: orca
+    orca:
+      neighbor_dist: 5.0
+      max_neighbors: 10
+      time_horizon: 5.0
+      time_horizon_obst: 5.0
+      obstacle_segment: 0.2
+
+hunav_loader:
+  ros__parameters:
+    map: cafe
+    publish_people: true
+    default_motion_model: orca
+    orca:
+      neighbor_dist: 5.0
+      max_neighbors: 10
+      time_horizon: 5.0
+      time_horizon_obst: 5.0
+      obstacle_segment: 0.2
+    agents:
+      - agent1
+      - agent2
+      - agent3
+      - agent4
+    agent1:
+      id: 1
+      skin: 0
+      group_id: -1
+      max_vel: 0.8
+      radius: 0.4
+      behavior:
+        type: 1 # REGULAR=1, IMPASSIVE=2, SURPRISED=3, SCARED=4, CURIOUS=5, THREATENING=6
+        configuration: 0   # def: 0, custom:1, random_normal:2, random_uniform:3
+        duration: 40.0  # seg
+        once: true
+        vel: 0.4
+        dist: 0.0
+        goal_force_factor: 2.0
+        obstacle_force_factor: 10.0
+        social_force_factor: 5.0
+        other_force_factor: 20.0
+      init_pose:
+        x: -2.00000
+        y: 2.097434
+        z: 1.250000
+        h: 0.0
+      goal_radius: 0.3
+      cyclic_goals: false      # cross the swarm once, then stop
+      goals:
+        - g0
+      g0:
+        x: 2.223393
+        y: -1.661066
+        h: 1.250000
+    agent2:
+      id: 2
+      skin: 2
+      group_id: -1
+      max_vel: 0.8
+      radius: 0.4
+      behavior:
+        type: 1 # REGULAR=1, IMPASSIVE=2, SURPRISED=3, SCARED=4, CURIOUS=5, THREATENING=6
+        configuration: 0   # def: 0, custom:1, random_normal:2, random_uniform:3
+        duration: 40.0  # seg
+        once: true
+        vel: 0.4
+        dist: 0.0
+        goal_force_factor: 2.0
+        obstacle_force_factor: 10.0
+        social_force_factor: 5.0
+        other_force_factor: 20.0
+      init_pose:
+        x: 2.694274
+        y: 2.657355
+        z: 1.250000
+        h: 0.0
+      goal_radius: 0.3
+      cyclic_goals: false      # cross the swarm once, then stop
+      goals:
+        - g0
+      g0:
+        x: -1.978295
+        y: -1.696076
+        h: 1.250000
+    agent3:
+      id: 3
+      skin: 1
+      group_id: -1
+      max_vel: 0.8
+      radius: 0.4
+      behavior:
+        type: 1 # REGULAR=1, IMPASSIVE=2, SURPRISED=3, SCARED=4, CURIOUS=5, THREATENING=6
+        configuration: 0   # def: 0, custom:1, random_normal:2, random_uniform:3
+        duration: 40.0  # seg
+        once: true
+        vel: 0.4
+        dist: 0.0
+        goal_force_factor: 2.0
+        obstacle_force_factor: 10.0
+        social_force_factor: 5.0
+        other_force_factor: 20.0
+      init_pose:
+        x: 2.714108
+        y: -0.945546
+        z: 1.250000
+        h: 0.0
+      goal_radius: 0.3
+      cyclic_goals: false      # cross the swarm once, then stop
+      goals:
+        - g0
+      g0:
+        x: -1.978672
+        y: -0.735422
+        h: 1.250000
+    agent4:
+      id: 4
+      skin: 3
+      group_id: -1
+      max_vel: 0.8
+      radius: 0.4
+      behavior:
+        type: 1 # REGULAR=1, IMPASSIVE=2, SURPRISED=3, SCARED=4, CURIOUS=5, THREATENING=6
+        configuration: 0   # def: 0, custom:1, random_normal:2, random_uniform:3
+        duration: 40.0  # seg
+        once: true
+        vel: 0.4
+        dist: 0.0
+        goal_force_factor: 2.0
+        obstacle_force_factor: 10.0
+        social_force_factor: 5.0
+        other_force_factor: 20.0
+      init_pose:
+        x: -2.083735
+        y: -1.470868
+        z: 1.250000
+        h: 0.0
+      goal_radius: 0.3
+      cyclic_goals: false      # cross the swarm once, then stop
+      goals:
+        - g0
+      g0:
+        x: 2.853647
+        y: -2.135856
+        h: 1.250000

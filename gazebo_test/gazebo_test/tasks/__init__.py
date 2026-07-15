@@ -5,3 +5,4 @@
 from gazebo_test.tasks import go_to_pose  # noqa: F401
 from gazebo_test.tasks import go_to_pose_multirobot  # noqa: F401
 from gazebo_test.tasks import formation  # noqa: F401
+from gazebo_test.tasks import perturbation  # noqa: F401

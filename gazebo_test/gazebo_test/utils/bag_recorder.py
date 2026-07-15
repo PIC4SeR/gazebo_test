@@ -17,45 +17,50 @@ from pathlib import Path
 
 import rosbag2_py
 
+# Global-only: everything a robot publishes is namespaced (see the per-robot
+# templates below).
 topic_dict = {
     "/goal_pose": PoseStamped,
     "/experiment_result": String,
-    "/cmd_vel": Twist,
-    "/front/scan": LaserScan,
     "/human_states": Agents,
-    "/jackal/ground_truth": Odometry,
-    "/jackal_velocity_controller/cmd_vel_unstamped": Twist,
-    "/jackal_velocity_controller/odom": Odometry,
-    "/jackal/collision": Collision,
     "/people": People,
-    "/plan": NavPath,
     "/tf": TFMessage,
     "/tf_static": TFMessage,
 }
 
-maps_topic_dict = {
-    "/map": OccupancyGrid,
-    "/global_costmap/costmap": OccupancyGrid,
-    "/local_costmap/costmap": OccupancyGrid,
-}
-
 # Per-robot topics, relative to each robot's namespace. add_robot_namespaces()
 # prefixes these with "/<namespace>/" for every robot in a fleet. "goal_pose" is
-# written manually (like the global /goal_pose), not subscribed.
+# written manually (like the global /goal_pose), not subscribed. These are the
+# model-agnostic topics every profile publishes (ground_truth/collision are
+# injected by the robot profiles for non-jackal platforms too).
 robot_topic_templates = {
     "goal_pose": PoseStamped,
     "cmd_vel": Twist,
-    "front/scan": LaserScan,
     "ground_truth": Odometry,
-    "jackal_velocity_controller/cmd_vel_unstamped": Twist,
-    "jackal_velocity_controller/odom": Odometry,
     "collision": Collision,
     "plan": NavPath,
     "tf": TFMessage,
     "tf_static": TFMessage,
 }
 
+# Model-specific per-robot topics: sensor and odometry names differ per
+# platform (jackal: front/scan + controller odom; turtlebots: scan + odom).
+# Namespaces with an unknown model record the common set only.
+model_topic_templates = {
+    # Under a namespace the jackal's wheel odometry/command come straight from the
+    # Gazebo skid-steer plugin and twist_mux (/<ns>/odom, /<ns>/cmd_vel_unstamped);
+    # the old jackal_velocity_controller/* names have no publishers.
+    "jackal": {
+        "front/scan": LaserScan,
+        "cmd_vel_unstamped": Twist,
+        "odom": Odometry,
+    },
+    "turtlebot3": {"scan": LaserScan, "odom": Odometry},
+    "turtlebot2": {"scan": LaserScan, "odom": Odometry},
+}
+
 robot_maps_templates = {
+    "map": OccupancyGrid,
     "global_costmap/costmap": OccupancyGrid,
     "local_costmap/costmap": OccupancyGrid,
 }
@@ -94,9 +99,9 @@ class BagRecorder:
         self.topics_metadata = []
         self.record_maps = record_maps
         # build a local copy of topics to record (avoid mutating the module-level dict)
+        # The maps are per-robot too (/<ns>/map, /<ns>/{global,local}_costmap/costmap),
+        # so record_maps is honoured in add_robot_namespaces, not here.
         active_topics = dict(topic_dict)
-        if record_maps:
-            active_topics.update(maps_topic_dict)
         self._active_topics = active_topics
         for topic_name, msg_type in active_topics.items():
             # Create a TopicMetadata object for each topic
@@ -239,7 +244,7 @@ class BagRecorder:
         self.set_goal(goal)
         self.logger.debug(f"Started recording and set goal to: {goal}")
 
-    def add_robot_namespaces(self, namespaces):
+    def add_robot_namespaces(self, namespaces, models: Optional[dict] = None):
         """Register per-robot namespaced topics for a fleet (multi-robot mode).
 
         Each robot's topics live under ``/<namespace>/...``; this expands the
@@ -250,17 +255,31 @@ class BagRecorder:
 
         Args:
             namespaces: iterable of robot namespaces (== robot names).
+            models: optional ``{namespace: robot model}`` mapping selecting each
+                robot's model-specific topics (scan/odom names differ per
+                platform); unmapped namespaces default to ``"jackal"``.
         """
         if self.recording:
             self.logger.warn("Cannot add robot topics while recording.")
             return
-        templates = dict(robot_topic_templates)
+        models = models or {}
+        common_templates = dict(robot_topic_templates)
         if self.record_maps:
-            templates.update(robot_maps_templates)
+            common_templates.update(robot_maps_templates)
 
         added = 0
         for ns in namespaces:
             ns_clean = str(ns).strip("/")
+            model = models.get(ns_clean) or "jackal"
+            if model not in model_topic_templates:
+                self.logger.warn(
+                    f"BagRecorder: unknown robot model '{model}' for "
+                    f"'{ns_clean}'; recording the common topics only."
+                )
+            templates = {
+                **common_templates,
+                **model_topic_templates.get(model, {}),
+            }
             for rel, msg_type in templates.items():
                 topic_name = f"/{ns_clean}/{rel}"
                 if topic_name in self._active_topics:

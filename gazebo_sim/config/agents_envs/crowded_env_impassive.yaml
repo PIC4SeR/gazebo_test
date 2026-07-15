@@ -1,36 +1,34 @@
-# Explicit per-node keying (instead of /**) so parameters do not leak to
-# unrelated nodes. The motion-model selection + ORCA tuning are read by BOTH the
-# hunav_loader and hunav_agent_manager nodes, so that block is duplicated under
-# each (keep the two copies in sync). The agent definitions are only needed by
-# hunav_loader.
+# Impassive crowd: humans use the SFM motion model, but every agent runs the
+# HuNav IMPASSIVE behavior (behavior.type: 2) instead of REGULAR (type: 1).
 #
-# Strategy defaults to 'fixed': every human uses default_motion_model unless it
-# has a per-agent `motion_model:` override (all agents here are orca anyway).
-# Per-agent overrides only take effect under the 'fixed' strategy, and for the
-# manager to honor a per-agent override that differs from the default it must
-# also appear under hunav_agent_manager below.
+# What this changes (see AgentManager::computeForces):
+#   regular (1)   -> the robot is injected into the agent's *social* neighbor set,
+#                    so humans anticipate it and cooperatively negotiate passage.
+#   impassive (2) -> the robot is injected into the agent's *obstacle* set instead.
+#                    Humans no longer socially anticipate the robot; they only feel
+#                    a short-range repulsion from it, and they still SFM-avoid each
+#                    other. This is the non-cooperative ("distracted pedestrian")
+#                    baseline: the robot must do the anticipatory work, but humans
+#                    will not walk straight through it the way `cv` agents do.
+#
+# The motion model MUST stay `sfm` here: AgentManager::updatePosition routes every
+# agent through its MotionModel unconditionally, and CVModel/ORCAModel ignore the
+# computed forces entirely -- so `motion_model: cv` would silently discard the
+# impassive obstacle force and behavior.type would have no effect at all.
+#
+# Agent poses, goals and max_vel are copied verbatim from crowded_env_cv.yaml so
+# that cv-vs-impassive isolates reactivity (note these speeds are higher than
+# crowded_env.yaml's).
 
 hunav_agent_manager:
   ros__parameters:
-    default_motion_model: orca
-    orca:
-      neighbor_dist: 5.0
-      max_neighbors: 10
-      time_horizon: 5.0
-      time_horizon_obst: 5.0
-      obstacle_segment: 0.2
+    default_motion_model: sfm
 
 hunav_loader:
   ros__parameters:
     map: cafe
     publish_people: true
-    default_motion_model: orca
-    orca:
-      neighbor_dist: 5.0
-      max_neighbors: 10
-      time_horizon: 5.0
-      time_horizon_obst: 5.0
-      obstacle_segment: 0.2
+    default_motion_model: sfm
     agents:
       - agent1
       - agent2
@@ -46,9 +44,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -82,9 +80,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -118,9 +116,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.6
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -154,9 +152,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.4
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -190,9 +188,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -226,9 +224,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.6
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -262,9 +260,9 @@ hunav_loader:
       group_id: -1
       max_vel: 0.8
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true
@@ -298,9 +296,9 @@ hunav_loader:
       group_id: -1
       max_vel: 1.0
       radius: 0.4
-      motion_model: orca
+      motion_model: sfm
       behavior:
-        type: 1
+        type: 2
         configuration: 0
         duration: 40.0
         once: true

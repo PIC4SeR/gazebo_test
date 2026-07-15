@@ -305,6 +305,13 @@ def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         help="Number of seconds to wait before starting the experiment (to let the environment settle)",
     )
 
+    run_parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=None,
+        help="Override the experiment configuration's repetition count",
+    )
+
     nav_params_action = run_parser.add_argument(
         "--nav-params",
         action="store",
@@ -486,7 +493,7 @@ def run(args: argparse.Namespace):
     # present -- are dynamic obstacles.
     goals_yaml = _load_goals_yaml(goals_and_poses)
     all_robots = goals_yaml.get("robots") or []
-    fleet_robots = all_robots if task in ("multirobot", "formation") else []
+    fleet_robots = all_robots if task in ("multirobot", "formation", "perturbation") else []
     robots_arg = (
         yaml.safe_dump(fleet_robots, default_flow_style=True).strip()
         if fleet_robots
@@ -553,7 +560,12 @@ def run(args: argparse.Namespace):
         selected_algorithm_name = (args.navigator or "").strip()
     if not selected_algorithm_name:
         selected_algorithm_name = "unknown"
-    experiment_identifier = Path(goals_and_poses).stem
+    # Must match the identifier the experiment manager registers jobs under
+    # (ExperimentManager: experiment_name_param or goals-file stem). Experiments
+    # that share a goals_and_poses file (e.g. *_crowded_env all use
+    # crowded_env.yaml) would otherwise collapse to the same stem here and let a
+    # completed sibling run skip this experiment's launch.
+    experiment_identifier = args.experiment or Path(goals_and_poses).stem
 
     if checkpoint_enabled:
         try:
@@ -700,8 +712,12 @@ def run(args: argparse.Namespace):
             # Start RViz
             pane = window.panes[0]
             pane.select()
+            # Lone robot: the stack runs namespaced (see
+            # _default_navigation_launch_command), so RViz must follow it.
             rviz_robots_arg = (
-                shlex.quote(f"robots:={robots_arg}") if robots_arg else ""
+                shlex.quote(f"robots:={robots_arg}")
+                if robots_arg
+                else f"namespace:={primary_robot}"
             )
             pane.send_keys(f"ros2 launch gazebo_test rviz.launch.py {rviz_robots_arg}")
             print("Started RViz")
@@ -761,6 +777,9 @@ def run(args: argparse.Namespace):
             if args.wait_before_start
             else ""
         )
+        repetitions = (
+            f"repetitions:={args.repetitions}" if args.repetitions is not None else ""
+        )
         checkpoint_arg = ""
         if checkpoint_enabled and checkpoint_dsn_value:
             checkpoint_arg = f"checkpoint_dsn:={checkpoint_dsn_value}"
@@ -793,6 +812,7 @@ def run(args: argparse.Namespace):
                 {algorithm_name} \
                 {exp_config_pkg} \
                 {wait_before_start} \
+                {repetitions} \
                 {checkpoint_arg} \
                 {resume_checkpoint} \
                 {navigation_backend_arg} \

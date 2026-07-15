@@ -26,6 +26,8 @@ class ExperimentResult(Enum):
     RESULT_NOT_SET = 6
     # Multi-robot: a robot collided with another robot in the fleet.
     FAILURE_COLLISION_ROBOT = 7
+    # Perturbation: the swarm's group center drifted out of tolerance.
+    FAILURE_DRIFT = 8
 
     def __str__(self):
         match self:
@@ -41,6 +43,8 @@ class ExperimentResult(Enum):
                 return "Failure: Timeout"
             case ExperimentResult.FAILURE_NAVIGATION:
                 return "Failure: Navigation failure"
+            case ExperimentResult.FAILURE_DRIFT:
+                return "Failure: Group center drifted out of tolerance"
             case ExperimentResult.RESULT_NOT_SET:
                 return "Result not set"
 

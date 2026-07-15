@@ -102,7 +102,11 @@ class MultiRobotGoToPoseTask(ExperimentTask):
             # Register every robot's namespaced topics so the bag captures the
             # whole fleet (per-robot cmd_vel, scan, odom, plan, tf, collision...).
             self.manager.bag_recorder.add_robot_namespaces(
-                [robot["name"] for robot in self.fleet]
+                [robot["name"] for robot in self.fleet],
+                models={
+                    robot["name"]: robot.get("model", "jackal")
+                    for robot in self.fleet
+                },
             )
         await asyncio.gather(
             *(nh.initialize_navigation() for nh in self.navigators.values())

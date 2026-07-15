@@ -29,6 +29,9 @@ class HunavEvaluatorHandler:
         )
         self.algorithm = algorithm
         self.base_path = base_path
+        # Set on the first start_recording(); stays None if the task never
+        # records (e.g. formation mode ignores the evaluator).
+        self.metrics_path: Optional[Path] = None
         self.date = node.get_clock().now().to_msg().sec
         if not self.base_path:
             self.base_path = Path(f"bags/gazebo_test/exp_{self.date}/")
@@ -162,8 +165,11 @@ class HunavEvaluatorHandler:
         Returns:
             pd.DataFrame: The DataFrame containing the evaluation metrics.
         """
-        if not self.metrics_path.exists():
-            self.logger.error(f"Metrics file {self.metrics_path} does not exist.")
+        if self.metrics_path is None or not self.metrics_path.exists():
+            self.logger.error(
+                "No evaluator metrics recorded "
+                f"(metrics file: {self.metrics_path})."
+            )
             return pd.DataFrame()
         return pd.read_csv(self.metrics_path)
 

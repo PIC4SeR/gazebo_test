@@ -33,6 +33,7 @@ class GazeboCommonArgs:
             "jackal",
             "ghost_robot",
             "turtlebot3",
+            "turtlebot2",
         ],
     )
     world_name: DeclareLaunchArgument = DeclareLaunchArgument(
