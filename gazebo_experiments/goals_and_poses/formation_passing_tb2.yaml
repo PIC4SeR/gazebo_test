@@ -1,0 +1,37 @@
+# Mixed-fleet formation passing: one Jackal and two TurtleBot2 robots travel
+# right-to-left through the corridor while the passing agents move toward them.
+robots:
+  - name: jackal
+    model: jackal
+    spawn: [6.5, 0.0, 3.140]
+    max_speed: 0.35
+    max_lin_accel: 0.3
+  - name: turtlebot2
+    model: turtlebot2
+    spawn: [6.5, 0.75, 3.140]
+  - name: turtlebot2_1
+    model: turtlebot2
+    spawn: [6.5, -0.75, 3.140]
+
+goal_name: goal_box
+map_path: maps/corridor.yaml
+
+episodes:
+  - episode_1
+  - episode_2
+
+poses:
+  # Line abreast across the corridor.
+  episode_1:
+    jackal: [6.5, 0.0, 3.140]
+    turtlebot2: [6.5, 0.75, 3.140]
+    turtlebot2_1: [6.5, -0.75, 3.140]
+  # Column along the direction of travel.
+  episode_2:
+    jackal: [6.5, 0.0, 3.140]
+    turtlebot2: [7.25, 0.0, 3.140]
+    turtlebot2_1: [5.75, 0.0, 3.140]
+
+centroid:
+  episode_1: [-4.0, 0.0]
+  episode_2: [-4.0, 0.0]

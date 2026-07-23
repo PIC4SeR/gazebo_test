@@ -4,8 +4,10 @@
 # (see agents_envs/crossing/agents.yaml). Unlike the formation task there is no
 # distant centroid to reach: the swarm's target is its own group center, so the
 # perturbation task defaults the hold point to the mean of each episode's start
-# poses below (no 'centroid:' block needed). Success = the swarm survives the
-# full timeout window without a collision (it held station); a collision fails.
+# poses below (no 'centroid:' block needed). The episode ends at steady state:
+# the agents cross once and park, and once they and the fleet are all still the
+# swarm held together -> success. A collision, the formation coming apart, or
+# never settling before the timeout all fail.
 #
 # Same fleet schema and swarm wiring as `formation_crossing`: TurtleBot3 burgers
 # (least-sensor variant, lidar + imu only) driven by swarm_control's hybrid
@@ -40,10 +42,10 @@ goal_name: "goal_box"               # the held centroid is visualized as this bo
 map_path: "maps/experiment.yaml"
 
 # Fail the episode if the swarm's live group center (ground-truth, world frame)
-# strays more than this many metres from the hold point; polled this often.
-# Optional -- these are the task defaults.
-drift_tolerance: 0.75               # metres
-drift_poll_period: 0.5              # seconds
+# grows more than this many metres (RMS radius) beyond its starting size and
+# stays there; polled this often. Optional -- these are the task defaults.
+spread_tolerance: 0.75              # metres
+spread_poll_period: 0.5             # seconds
 
 episodes:
   - episode_1

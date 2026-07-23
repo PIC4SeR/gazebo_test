@@ -30,5 +30,7 @@ install(DIRECTORY
 )
 
 experiment_register_configs(${PROJECT_NAME} EXPERIMENT_FILE "experiments/experiments.yaml")
+experiment_register_configs(${PROJECT_NAME}_swarm_profiles
+  EXPERIMENT_FILE "experiments/swarm_formation_profiles.yaml")
 
 ament_package()

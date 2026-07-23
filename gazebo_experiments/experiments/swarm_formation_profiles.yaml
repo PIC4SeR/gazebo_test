@@ -1,0 +1,375 @@
+experiments:
+  - formation_passing_tb2_gaussian_off
+  - formation_passing_tb2_gaussian_raw
+  - formation_passing_tb2_gaussian_normalized
+  - formation_passing_tb2_moussaid_off
+  - formation_passing_tb2_moussaid_raw
+  - formation_passing_tb2_moussaid_normalized
+  - formation_passing_tb2_combined_off
+  - formation_passing_tb2_combined_raw
+  - formation_passing_tb2_combined_normalized
+  - formation_passing_tb2_none_off
+  - formation_passing_tb2_none_raw
+  - formation_passing_tb2_none_normalized
+  - formation_crossing_tb2_gaussian_off
+  - formation_crossing_tb2_gaussian_raw
+  - formation_crossing_tb2_gaussian_normalized
+  - formation_crossing_tb2_moussaid_off
+  - formation_crossing_tb2_moussaid_raw
+  - formation_crossing_tb2_moussaid_normalized
+  - formation_crossing_tb2_combined_off
+  - formation_crossing_tb2_combined_raw
+  - formation_crossing_tb2_combined_normalized
+  - formation_crossing_tb2_none_off
+  - formation_crossing_tb2_none_raw
+  - formation_crossing_tb2_none_normalized
+  - perturbation_tb2_gaussian_off
+  - perturbation_tb2_gaussian_raw
+  - perturbation_tb2_gaussian_normalized
+  - perturbation_tb2_moussaid_off
+  - perturbation_tb2_moussaid_raw
+  - perturbation_tb2_moussaid_normalized
+  - perturbation_tb2_combined_off
+  - perturbation_tb2_combined_raw
+  - perturbation_tb2_combined_normalized
+  - perturbation_tb2_none_off
+  - perturbation_tb2_none_raw
+  - perturbation_tb2_none_normalized
+
+_formation_launch_arguments: &formation_launch_arguments
+  robots: "{robots}"
+  odom_topic: ground_truth
+  people_topic: /people
+  use_sim_time: "true"
+
+_launch_gaussian_off: &launch_gaussian_off
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: gaussian
+    memory_profile: "off"
+
+_launch_gaussian_raw: &launch_gaussian_raw
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: gaussian
+    memory_profile: raw
+
+_launch_gaussian_normalized: &launch_gaussian_normalized
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: gaussian
+    memory_profile: normalized
+
+_launch_moussaid_off: &launch_moussaid_off
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: moussaid
+    memory_profile: "off"
+
+_launch_moussaid_raw: &launch_moussaid_raw
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: moussaid
+    memory_profile: raw
+
+_launch_moussaid_normalized: &launch_moussaid_normalized
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: moussaid
+    memory_profile: normalized
+
+_launch_combined_off: &launch_combined_off
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: combined
+    memory_profile: "off"
+
+_launch_combined_raw: &launch_combined_raw
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: combined
+    memory_profile: raw
+
+_launch_combined_normalized: &launch_combined_normalized
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: combined
+    memory_profile: normalized
+
+_launch_none_off: &launch_none_off
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: none
+    memory_profile: "off"
+
+_launch_none_raw: &launch_none_raw
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: none
+    memory_profile: raw
+
+_launch_none_normalized: &launch_none_normalized
+  package: swarm_control
+  launch: hybrid.launch.py
+  arguments:
+    <<: *formation_launch_arguments
+    profile: none
+    memory_profile: normalized
+
+_formation_passing_tb2: &formation_passing_tb2
+  task: formation
+  goals_and_poses: goals_and_poses/formation_passing_tb2.yaml
+  map: maps/corridor.yaml
+  world: corridor.world
+  world_pkg_name: gazebo_sim
+  agents_configuration_file: agents_envs/passing/agents.yaml
+  config_pkg_name: gazebo_sim
+  camera_config_file: camera_configs/corridor.yaml
+
+_formation_crossing_tb2: &formation_crossing_tb2
+  task: formation
+  goals_and_poses: goals_and_poses/formation_crossing_tb2.yaml
+  map: maps/experiment.yaml
+  map_pkg_name: gazebo_experiments
+  world: experiment_room.world
+  world_pkg_name: gazebo_sim
+  agents_configuration_file: agents_envs/crossing/agents.yaml
+  config_pkg_name: gazebo_sim
+  camera_config_file: camera_configs/experiment.yaml
+
+formation_passing_tb2_gaussian_off:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_gaussian_off
+formation_passing_tb2_gaussian_raw:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_gaussian_raw
+formation_passing_tb2_gaussian_normalized:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_gaussian_normalized
+formation_passing_tb2_moussaid_off:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_moussaid_off
+formation_passing_tb2_moussaid_raw:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_moussaid_raw
+formation_passing_tb2_moussaid_normalized:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_moussaid_normalized
+formation_passing_tb2_combined_off:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_combined_off
+formation_passing_tb2_combined_raw:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_combined_raw
+formation_passing_tb2_combined_normalized:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_combined_normalized
+formation_passing_tb2_none_off:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_none_off
+formation_passing_tb2_none_raw:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_none_raw
+formation_passing_tb2_none_normalized:
+  <<: *formation_passing_tb2
+  navigation_launch: *launch_none_normalized
+
+formation_crossing_tb2_gaussian_off:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_gaussian_off
+formation_crossing_tb2_gaussian_raw:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_gaussian_raw
+formation_crossing_tb2_gaussian_normalized:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_gaussian_normalized
+formation_crossing_tb2_moussaid_off:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_moussaid_off
+formation_crossing_tb2_moussaid_raw:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_moussaid_raw
+formation_crossing_tb2_moussaid_normalized:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_moussaid_normalized
+formation_crossing_tb2_combined_off:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_combined_off
+formation_crossing_tb2_combined_raw:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_combined_raw
+formation_crossing_tb2_combined_normalized:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_combined_normalized
+formation_crossing_tb2_none_off:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_none_off
+formation_crossing_tb2_none_raw:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_none_raw
+formation_crossing_tb2_none_normalized:
+  <<: *formation_crossing_tb2
+  navigation_launch: *launch_none_normalized
+
+# Swarm-controller profile matrix. All entries reuse the same TurtleBot2 +
+# Jackal perturbation scene; only potential and memory implementations differ.
+_perturbation_tb2_profile_base: &perturbation_tb2_profile_base
+  task: perturbation
+  goals_and_poses: goals_and_poses/perturbation_tb2.yaml
+  map: maps/experiment.yaml
+  map_pkg_name: gazebo_experiments
+  world: experiment_room.world
+  world_pkg_name: gazebo_sim
+  agents_configuration_file: agents_envs/perturbation_tb2/agents.yaml
+  config_pkg_name: gazebo_sim
+  camera_config_file: camera_configs/experiment.yaml
+
+_perturbation_tb2_launch_arguments: &perturbation_tb2_launch_arguments
+  robots: "{robots}"
+  odom_topic: ground_truth
+  people_topic: /people
+  use_sim_time: "true"
+  convergence_criterion: hold
+
+perturbation_tb2_gaussian_off:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: gaussian
+      memory_profile: "off"
+
+perturbation_tb2_gaussian_raw:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: gaussian
+      memory_profile: raw
+
+perturbation_tb2_gaussian_normalized:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: gaussian
+      memory_profile: normalized
+
+perturbation_tb2_moussaid_off:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: moussaid
+      memory_profile: "off"
+
+perturbation_tb2_moussaid_raw:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: moussaid
+      memory_profile: raw
+
+perturbation_tb2_moussaid_normalized:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: moussaid
+      memory_profile: normalized
+
+perturbation_tb2_combined_off:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: combined
+      memory_profile: "off"
+
+perturbation_tb2_combined_raw:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: combined
+      memory_profile: raw
+
+perturbation_tb2_combined_normalized:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: combined
+      memory_profile: normalized
+
+perturbation_tb2_none_off:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: none
+      memory_profile: "off"
+
+perturbation_tb2_none_raw:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: none
+      memory_profile: raw
+
+perturbation_tb2_none_normalized:
+  <<: *perturbation_tb2_profile_base
+  navigation_launch:
+    package: swarm_control
+    launch: hybrid.launch.py
+    arguments:
+      <<: *perturbation_tb2_launch_arguments
+      profile: none
+      memory_profile: normalized
+

@@ -1,0 +1,51 @@
+# Mixed-fleet formation crossing: one Jackal and two TurtleBot2 robots cross
+# the experiment room in both directions while HuNav agents cross their path.
+robots:
+  - name: jackal
+    model: jackal
+    spawn: [0.0, -4.25, 1.57]
+    max_speed: 0.35
+    max_lin_accel: 0.3
+  - name: turtlebot2
+    model: turtlebot2
+    spawn: [-0.75, -4.25, 1.57]
+  - name: turtlebot2_1
+    model: turtlebot2
+    spawn: [0.75, -4.25, 1.57]
+
+goal_name: goal_box
+map_path: maps/experiment.yaml
+
+episodes:
+  - episode_1
+  - episode_2
+  # - episode_3
+  # - episode_4
+
+poses:
+  # South-to-north, line abreast.
+  episode_1:
+    jackal: [0.0, -4.25, 1.57]
+    turtlebot2: [-0.75, -4.25, 1.57]
+    turtlebot2_1: [0.75, -4.25, 1.57]
+  # South-to-north, column.
+  episode_2:
+    jackal: [0.0, -4.25, 1.57]
+    turtlebot2: [0.0, -5.0, 1.57]
+    turtlebot2_1: [0.0, -3.5, 1.57]
+  # North-to-south, line abreast.
+  episode_3:
+    jackal: [0.0, 4.25, -1.57]
+    turtlebot2: [-0.75, 4.25, -1.57]
+    turtlebot2_1: [0.75, 4.25, -1.57]
+  # North-to-south, column.
+  episode_4:
+    jackal: [0.0, 4.25, -1.57]
+    turtlebot2: [0.0, 5.0, -1.57]
+    turtlebot2_1: [0.0, 3.5, -1.57]
+
+centroid:
+  episode_1: [0.0, 4.25]
+  episode_2: [0.0, 4.25]
+  episode_3: [0.0, -4.25]
+  episode_4: [0.0, -4.25]

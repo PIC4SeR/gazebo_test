@@ -30,7 +30,7 @@ class HunavEvaluatorHandler:
         self.algorithm = algorithm
         self.base_path = base_path
         # Set on the first start_recording(); stays None if the task never
-        # records (e.g. formation mode ignores the evaluator).
+        # records (i.e. the run was launched without the evaluator).
         self.metrics_path: Optional[Path] = None
         self.date = node.get_clock().now().to_msg().sec
         if not self.base_path:

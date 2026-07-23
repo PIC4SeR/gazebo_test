@@ -223,8 +223,8 @@ perturbation:
   # Three TurtleBot3 burgers start in formation and hold their group center
   # steady (swarm_control hybrid orchestrator, one hold-point goal) while the
   # crossing agents push through/around them. Same swarm wiring as
-  # formation_crossing; the perturbation task runs the full timeout window and
-  # counts a collision-free run as success. convergence_criterion 'hold' keeps
+  # formation_crossing; the perturbation task ends the episode once the agents
+  # have parked and the swarm is still again. convergence_criterion 'hold' keeps
   # the workers alive all episode -- with the default criterion the orchestrator
   # converges ~1 s in (the swarm starts AT its goal), cancels the workers, and
   # the uncontrolled fleet gets shoved into an instant drift failure.

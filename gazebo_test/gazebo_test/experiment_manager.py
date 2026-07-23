@@ -443,15 +443,11 @@ class ExperimentManager(Node):
                         how="left",
                     )
             with self._acquire_outcomes_lock():
-                file_exists = self.experiment_outcomes_path.exists()
-                experiment_outcome.to_csv(
-                    self.experiment_outcomes_path,
-                    mode="a",
-                    header=not file_exists,
-                    index=False,
-                )
-                # Atomic re-sort: write to a temp file first, then replace
-                df = pd.read_csv(self.experiment_outcomes_path)
+                if self.experiment_outcomes_path.exists():
+                    previous = pd.read_csv(self.experiment_outcomes_path)
+                    df = pd.concat([previous, experiment_outcome], ignore_index=True)
+                else:
+                    df = experiment_outcome
                 df = df.sort_values(by=["experiment_tag", "run_id"])
                 tmp_path = self.experiment_outcomes_path.with_suffix(".csv.tmp")
                 df.to_csv(

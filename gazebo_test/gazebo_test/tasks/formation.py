@@ -105,11 +105,6 @@ class FormationTask(MultiRobotGoToPoseTask):
                     for robot in self.fleet
                 },
             )
-        if self.manager.use_evaluator:
-            self.manager.get_logger().warning(
-                "HuNav evaluation is not supported in formation mode yet; "
-                "ignoring it for this run."
-            )
         # One swarm-level action client to the hybrid orchestrator. The "action"
         # backend skips Nav2 lifecycle (the orchestrator is a plain action
         # server, not a lifecycle stack).
@@ -128,11 +123,14 @@ class FormationTask(MultiRobotGoToPoseTask):
         target = self.centroid[experiment_tag]
         goal_entity = _entity_from_pose("goal_box", target[0], target[1], 0.0, z=0.0)
 
-        await manager.gazebo_env_handler.reset_environment_for_experiment_multi(
+        reset_ok = await manager.gazebo_env_handler.reset_environment_for_experiment_multi(
             entities=list(initial_states.values()),
             goal_entities=[goal_entity],
             goal_xml=manager.goal_box_xml,
         )
+        if not reset_ok:
+            manager.get_logger().error("Failed to reset the swarm to its starting poses")
+            return ExperimentResult.FAILURE_NAVIGATION
         await self._swarm_nav.reset_navigation()
 
         if manager.wait_before_start:
@@ -152,6 +150,15 @@ class FormationTask(MultiRobotGoToPoseTask):
             f"Steering swarm of {len(self._robot_names)} robots to centroid {target}"
         )
         goal_pose = get_posestamped_from_entity(goal_entity, "map")
+        if manager.use_evaluator:
+            # The evaluator takes per-robot goals, so a fleet steering to a
+            # shared centroid evaluates like any other multi-robot run.
+            await manager.hunav_evaluator_handler.start_recording(
+                goal=goal_pose,
+                experiment_tag=experiment_tag,
+                run_id=run_id,
+                robot_goals={name: goal_pose for name in self._robot_names},
+            )
         if manager.use_recorder:
             manager.bag_recorder.start_recording(experiment_tag, str(run_id))
             # The swarm shares one centroid goal; write it on every robot's
@@ -163,6 +170,8 @@ class FormationTask(MultiRobotGoToPoseTask):
         try:
             result = await self._drive_swarm(goal_pose, experiment_tag)
         finally:
+            if manager.use_evaluator:
+                await manager.hunav_evaluator_handler.stop_recording()
             if manager.use_recorder:
                 manager.bag_recorder.set_result_and_stop_recording(str(result))
         await self.cancel()

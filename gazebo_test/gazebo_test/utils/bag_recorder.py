@@ -4,7 +4,7 @@ from rclpy.node import Node
 from rclpy.serialization import serialize_message
 from std_msgs.msg import String
 from gazebo_collision_msgs.msg import Collision
-from geometry_msgs.msg import Pose, PoseStamped, Twist
+from geometry_msgs.msg import Pose, PoseStamped, Twist, Vector3Stamped
 from people_msgs.msg import People
 from nav_msgs.msg import Odometry, Path as NavPath
 from sensor_msgs.msg import LaserScan
@@ -41,6 +41,9 @@ robot_topic_templates = {
     "plan": NavPath,
     "tf": TFMessage,
     "tf_static": TFMessage,
+    # swarm_control workers only: internal social-memory state, published so it
+    # lands in the bag. Silent (empty topic) under any other controller.
+    "social_memory": Vector3Stamped,
 }
 
 # Model-specific per-robot topics: sensor and odometry names differ per

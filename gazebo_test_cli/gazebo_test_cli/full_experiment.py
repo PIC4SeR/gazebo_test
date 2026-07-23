@@ -36,6 +36,7 @@ from gazebo_test.script_utils.navigator_utils import (
 )
 
 from gazebo_test.utils.checkpoint_store import ExperimentCheckpointStore
+from gazebo_test_cli.launch_utils import swarm_algorithm_name
 
 
 def _print_experiments():
@@ -559,13 +560,17 @@ def run(args: argparse.Namespace):
     if not selected_algorithm_name:
         selected_algorithm_name = (args.navigator or "").strip()
     if not selected_algorithm_name:
+        selected_algorithm_name = swarm_algorithm_name(configured_navigation_launch) or ""
+    if not selected_algorithm_name:
         selected_algorithm_name = "unknown"
     # Must match the identifier the experiment manager registers jobs under
     # (ExperimentManager: experiment_name_param or goals-file stem). Experiments
     # that share a goals_and_poses file (e.g. *_crowded_env all use
     # crowded_env.yaml) would otherwise collapse to the same stem here and let a
     # completed sibling run skip this experiment's launch.
-    experiment_identifier = args.experiment or Path(goals_and_poses).stem
+    experiment_identifier = (args.experiment or Path(goals_and_poses).stem).removesuffix(
+        f"_{selected_algorithm_name}"
+    )
 
     if checkpoint_enabled:
         try:
@@ -762,12 +767,7 @@ def run(args: argparse.Namespace):
             if args.base_path_for_results
             else ""
         )
-        algorithm_name = ""
-        if not args.algorithm_name:
-            if args.navigator:
-                algorithm_name = f"algorithm_name:={args.navigator}"
-        else:
-            algorithm_name = f"algorithm_name:={args.algorithm_name}"
+        algorithm_name = f"algorithm_name:={selected_algorithm_name}"
 
         exp_config_pkg = (
             f"exp_config_pkg:={args.exp_config_pkg}" if args.exp_config_pkg else ""
@@ -807,7 +807,7 @@ def run(args: argparse.Namespace):
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
                 goals_and_poses_file:={goals_and_poses} \
-                experiment_name:={args.experiment} \
+                experiment_name:={experiment_identifier} \
                 {base_path_for_results} \
                 {algorithm_name} \
                 {exp_config_pkg} \

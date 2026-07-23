@@ -279,6 +279,15 @@ class GazeboEnvironmentHandler:
         robot (goal_entities carry distinct names, e.g. ``goal_box_<robot>``).
         """
         self.logger.debug("Resetting Gazebo environment (multi-robot)")
+        entity_names = [entity.name for entity in entities]
+        for _ in range(60):
+            if await self.check_entities_in_world(entity_names):
+                break
+            await asyncio.sleep(0.5)
+        else:
+            self.logger.error("Timed out waiting for all robot entities to spawn")
+            return False
+
         if not await self.pause_gazebo():
             self.logger.error("Failed to pause Gazebo environment")
             return False
@@ -291,7 +300,8 @@ class GazeboEnvironmentHandler:
         if not await self.reset_the_world():
             self.logger.error("Failed to reset Gazebo environment")
             return False
-        if not await self.set_entities_state(entities):
+        reset_results = await self.set_entities_state(entities)
+        if not all(reset_results.values()):
             self.logger.error("Failed to set entities state")
             return False
 
