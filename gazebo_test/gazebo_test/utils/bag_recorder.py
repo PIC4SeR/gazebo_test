@@ -1,3 +1,4 @@
+import threading
 from typing import Optional
 import rclpy
 from rclpy.node import Node
@@ -44,6 +45,15 @@ robot_topic_templates = {
     # swarm_control workers only: internal social-memory state, published so it
     # lands in the bag. Silent (empty topic) under any other controller.
     "social_memory": Vector3Stamped,
+    # Commanded 2D velocity (pre-twist-projection) and its social component.
+    # Needed to separate a wrong command from an unexecuted one.
+    "cmd_u": Vector3Stamped,
+    "cmd_u_social": Vector3Stamped,
+    # The centroid law's own output: the common input u_c, identical on every
+    # worker. Without it a bag shows the total command and its social part but
+    # not the term that drives the fleet, so what the centroid mode actually did
+    # -- held uc_speed, tapered, stopped -- is the one thing not recoverable.
+    "cmd_u_c": Vector3Stamped,
 }
 
 # Model-specific per-robot topics: sensor and odometry names differ per
@@ -96,6 +106,9 @@ class BagRecorder:
         self.node = node
         self.writer = rosbag2_py.SequentialWriter()
         self.recording = False
+        # Serialises bag writes against close(); see stop_recording.
+        self._write_lock = threading.Lock()
+        self._write_failed = False
         self.logger = rclpy.logging.get_logger("bag_recorder")  # type: ignore
         self.get_clock = node.get_clock
         self.algorithm = algorithm
@@ -165,6 +178,7 @@ class BagRecorder:
         for topic_info in self.topics_metadata:
             self.writer.create_topic(topic_info)
 
+        self._write_failed = False
         self.recording = True
         self.logger.debug(f"Started recording to {self.bag_path}")
 
@@ -173,8 +187,10 @@ class BagRecorder:
             self.logger.warn("No recording is in progress.")
             return
 
-        self.writer.close()
+
         self.recording = False
+        with self._write_lock:
+            self.writer.close()
         self.logger.debug(f"Stopped recording to {self.bag_path}")
 
     def topic_callback(self, msg, topic_name):
@@ -195,10 +211,22 @@ class BagRecorder:
             return
         # Serialize the message
         serialized_msg = serialize_message(msg)
-        # Write the message to the bag file
-        self.writer.write(
-            topic_name, serialized_msg, self.get_clock().now().nanoseconds
-        )
+
+        with self._write_lock:
+            if not self.recording:
+                return
+            try:
+                self.writer.write(
+                    topic_name, serialized_msg, self.get_clock().now().nanoseconds
+                )
+            except Exception as exc:                      # noqa: BLE001
+                self.recording = False
+                if not self._write_failed:
+                    self._write_failed = True
+                    self.logger.error(
+                        f"Bag write failed ({exc}); recording stopped for "
+                        f"{self.bag_path}. The episode continues."
+                    )
 
     def set_experiment_result(self, result: str):
         """

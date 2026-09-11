@@ -65,6 +65,7 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
     goals = data.get("goals", {})
     poses = data.get("poses", {})
     centroid_cfg = data.get("centroid", {})
+    station_keeping = bool(data.get("station_keeping", False))
 
     initial_state_entities: Dict[str, Dict[str, EntityState]] = {}
     goal_entities: Dict[str, Dict[str, EntityState]] = {}
@@ -103,6 +104,7 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
         "initial_state_entities": initial_state_entities,
         "goal_entities": goal_entities,
         "centroid": centroid,
+        "station_keeping": station_keeping,
     }
 
 

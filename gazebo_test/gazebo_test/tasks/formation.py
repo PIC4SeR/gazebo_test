@@ -45,6 +45,8 @@ from gazebo_test.utils.navigation_handler import NavigationHandler
 class FormationTask(MultiRobotGoToPoseTask):
     """Steer the whole fleet to a centroid while ``swarm_control`` holds shape."""
 
+    station_keeping: bool = False
+
     def __init__(self, manager) -> None:
         super().__init__(manager)
         # episode -> (x, y) target centroid for the swarm.
@@ -60,6 +62,8 @@ class FormationTask(MultiRobotGoToPoseTask):
         self.initial_state_entities = parsed["initial_state_entities"]
         self.goal_entities = parsed["goal_entities"]
         self.centroid = parsed["centroid"]
+        # Station-keeping episodes end by running out the clock, not by arriving.
+        self.station_keeping = bool(parsed.get("station_keeping", False))
         tags = list(self.initial_state_entities.keys())
         missing = [tag for tag in tags if tag not in self.centroid]
         if missing:
@@ -205,6 +209,15 @@ class FormationTask(MultiRobotGoToPoseTask):
             task.cancel()
 
         if not done:
+            if self.station_keeping:
+                # Holding the centroid for the full episode IS the task. The
+                # orchestrator runs `hold`, which by construction never converges,
+                # so exhausting timeout_duration without a collision is a SUCCESS.
+                manager.get_logger().info(
+                    f"Episode '{experiment_tag}' held station for the full "
+                    "episode; station-keeping complete."
+                )
+                return ExperimentResult.SUCCESS
             manager.get_logger().warning(
                 f"Episode '{experiment_tag}' timed out before the swarm converged"
             )

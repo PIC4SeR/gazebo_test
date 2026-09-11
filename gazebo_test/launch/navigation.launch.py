@@ -128,9 +128,7 @@ def generate_launch_description():
     remappings = [
         ("/tf", "tf"),
         ("/tf_static", "tf_static"),
-        # Relative so it resolves under the robot namespace (/<ns>/detected_people)
-        # instead of the hardcoded /jackal/... which double-prefixes under a ns.
-        ("people", "detected_people"),
+        ("people", "/people")
     ]
 
     # Create our own temporary YAML files that include substitutions
