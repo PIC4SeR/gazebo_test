@@ -803,6 +803,12 @@ def run(args: argparse.Namespace):
         params_file_arg = (
             f"params_file:={navigator_path}" if navigator_path else ""
         )
+        # An experiment may declare its own episode budget (sim seconds); the
+        # manager otherwise falls back to experiment_config.yaml's.
+        timeout_arg = (
+            f"timeout_duration:={float(experiment_dict['timeout_duration'])}"
+            if experiment_dict.get("timeout_duration") else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
@@ -818,6 +824,7 @@ def run(args: argparse.Namespace):
                 {navigation_backend_arg} \
                 {watchdog_required_nodes_arg} \
                 {params_file_arg} \
+                {timeout_arg} \
                 task:={task} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )

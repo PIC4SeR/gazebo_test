@@ -6,6 +6,8 @@ from geometry_msgs.msg import Pose, PoseStamped
 from tf_transformations import quaternion_from_euler
 import yaml
 
+from gazebo_test.utils.spawn_region import poses_from_spawn_region
+
 
 def _entity_from_pose(name: str, x: float, y: float, theta: float, z: float) -> EntityState:
     entity = EntityState()
@@ -39,8 +41,11 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
         goals:   {episode_1: {jackal0: [x, y],        tb3_1: [x, y]}}   # optional
         poses:   {episode_1: {jackal0: [x, y, theta], tb3_1: [x, y, theta]}}
         centroid: {episode_1: [x, y]}                                 # optional
+        spawn_region: {centroid: [x, y], radius: r, min_gap: g, seed: s}  # optional
 
-    ``poses`` are required. Per-robot ``goals`` are required only when present
+    ``poses`` are required for every episode, unless ``spawn_region`` is given:
+    then an episode without ``poses`` gets start poses sampled inside the circle
+    around the set centroid (see utils/spawn_region.py; same seed, same poses). Per-robot ``goals`` are required only when present
     (the go-to-pose fleet task drives them); the formation task instead steers
     the whole swarm toward the per-episode ``centroid`` target, so it omits
     ``goals``.
@@ -65,13 +70,19 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
     goals = data.get("goals", {})
     poses = data.get("poses", {})
     centroid_cfg = data.get("centroid", {})
+    spawn_cfg = data.get("spawn_region") or {}
     station_keeping = bool(data.get("station_keeping", False))
 
     initial_state_entities: Dict[str, Dict[str, EntityState]] = {}
     goal_entities: Dict[str, Dict[str, EntityState]] = {}
-    for episode in episodes:
+    resolved_poses: Dict[str, Dict[str, list]] = {}
+    for index, episode in enumerate(episodes, start=1):
         ep_goals = goals.get(episode, {})
-        ep_poses = poses.get(episode, {})
+        ep_poses = poses.get(episode)
+        if ep_poses is None and spawn_cfg:
+            ep_poses = poses_from_spawn_region(spawn_cfg, episode, index, fleet)
+        ep_poses = ep_poses or {}
+        resolved_poses[episode] = ep_poses
         initial_state_entities[episode] = {}
         goal_entities[episode] = {}
         for name in robot_names:
@@ -105,6 +116,8 @@ def parse_fleet_yaml(yaml_path: Path) -> dict:
         "goal_entities": goal_entities,
         "centroid": centroid,
         "station_keeping": station_keeping,
+        # the start poses actually used, sampled ones included
+        "poses": resolved_poses,
     }
 
 

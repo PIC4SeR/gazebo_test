@@ -153,6 +153,8 @@ def parse_experiment_name(experiment_name: str) -> Dict:
             experiment.get("navigation_launch_file", None),
         ),
         "task": experiment.get("task", "go_to_pose"),
+        # Optional per-experiment episode budget (sim s); None -> the config's.
+        "timeout_duration": experiment.get("timeout_duration"),
     }
 
 

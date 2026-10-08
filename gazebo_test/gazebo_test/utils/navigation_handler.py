@@ -181,7 +181,8 @@ class NavigationHandler:
         try:
             await self.navigator.cancelGoToPose()
         except Exception as exc:  # noqa: BLE001
-            self.logger.debug(f"cancelGoToPose failed or already complete: {exc}")
+            # Not debug: a goal left running here ends the NEXT episode.
+            self.logger.warning(f"cancelGoToPose failed: {exc!r}")
 
         if self.navigation_task:
             self.navigation_task.cancel()

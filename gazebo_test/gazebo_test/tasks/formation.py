@@ -28,6 +28,7 @@ from typing import List, Optional
 import rclpy.duration
 
 from gazebo_collision_msgs.msg import Collision
+from hunav_msgs.msg import Agents
 
 from gazebo_test.tasks.base import register_task
 from gazebo_test.tasks.go_to_pose_multirobot import MultiRobotGoToPoseTask
@@ -55,6 +56,11 @@ class FormationTask(MultiRobotGoToPoseTask):
         # swarm navigator is un-namespaced.
         self._orchestrator_ns: str = ""
         self._swarm_nav: Optional[NavigationHandler] = None
+        # Agents with a finite route (cyclic_goals false) that still have goals
+        # queued, from hunav_agent_manager's /human_states; None until the first
+        # message of the episode. See _humans_arrived.
+        self._agents_pending: Optional[set] = None
+        self._agents_unknown_warned = False
 
     def load_entities(self, yaml_path: Path) -> List[str]:
         parsed = parse_fleet_yaml(yaml_path)
@@ -118,6 +124,36 @@ class FormationTask(MultiRobotGoToPoseTask):
             namespace=self._orchestrator_ns,
         )
         await self._swarm_nav.initialize_navigation()
+        # Pedestrian arrival, for the episodes that end on a still scene.
+        self.manager.create_subscription(
+            Agents, "/human_states", self._on_agent_states, 10
+        )
+
+    def _on_agent_states(self, msg: Agents) -> None:
+        # HuNav pops each goal as the agent reaches it and, for a non-cyclic
+        # agent, does not re-queue it: an empty queue IS arrival at the last goal.
+        self._agents_pending = {
+            agent.name for agent in msg.agents
+            if not agent.cyclic_goals and len(agent.goals) > 0
+        }
+
+    def _humans_arrived(self) -> bool:
+        """True once every agent with a finite route has reached its last goal.
+
+        A still scene is only finished if the people got where they were going: a
+        pedestrian stalled in front of the fleet (HuNav agents have no planner) is
+        just as still as one that arrived. Cyclic agents never arrive and do not
+        count. Without /human_states the check cannot be made and does not block
+        (warned once), which keeps setups without hunav_agent_manager working.
+        """
+        if self._agents_pending is None:
+            if not self._agents_unknown_warned:
+                self.manager.get_logger().warning(
+                    "[formation] no /human_states yet: pedestrian arrival is not checked"
+                )
+                self._agents_unknown_warned = True
+            return True
+        return not self._agents_pending
 
     async def run_episode(
         self, experiment_tag: str, run_id: int
@@ -146,6 +182,7 @@ class FormationTask(MultiRobotGoToPoseTask):
 
         # Arm collision detection: ignore stale messages, clear per-episode state.
         self._episode_start = manager.get_clock().now()
+        self._agents_pending = None   # re-read after HuNav's reset of the routes
         for ns in self._robot_names:
             self._collision_event[ns].clear()
             self._collision_result[ns] = None
@@ -196,48 +233,49 @@ class FormationTask(MultiRobotGoToPoseTask):
             return ExperimentResult.FAILURE_NAVIGATION
 
         # Whichever happens first: the swarm converges, any robot collides, or
-        # the episode times out.
-        waiters = {asyncio.ensure_future(nav.go_to_pose_event.wait()): None}
-        for ns in self._robot_names:
-            waiters[asyncio.ensure_future(self._collision_event[ns].wait())] = ns
-        done, pending = await asyncio.wait(
-            set(waiters),
-            timeout=manager.evaluation_handler.timeout_duration,
-            return_when=asyncio.FIRST_COMPLETED,
+        # the episode's sim-time deadline passes.
+        nav_task = asyncio.ensure_future(nav.go_to_pose_event.wait())
+        collision_tasks = {
+            asyncio.ensure_future(self._collision_event[ns].wait()): ns
+            for ns in self._robot_names
+        }
+        done, stalled = await self._wait_with_deadline(
+            {nav_task, *collision_tasks}, experiment_tag
         )
-        for task in pending:
-            task.cancel()
-
-        if not done:
-            if self.station_keeping:
-                # Holding the centroid for the full episode IS the task. The
-                # orchestrator runs `hold`, which by construction never converges,
-                # so exhausting timeout_duration without a collision is a SUCCESS.
-                manager.get_logger().info(
-                    f"Episode '{experiment_tag}' held station for the full "
-                    "episode; station-keeping complete."
-                )
-                return ExperimentResult.SUCCESS
-            manager.get_logger().warning(
-                f"Episode '{experiment_tag}' timed out before the swarm converged"
-            )
-            return ExperimentResult.FAILURE_TIMEOUT
+        if stalled:
+            return ExperimentResult.FAILURE_SIM_STALLED
 
         collisions = [
             self._collision_result[ns]
-            for task, ns in waiters.items()
-            if ns is not None and task in done and self._collision_result[ns] is not None
+            for task, ns in collision_tasks.items()
+            if task in done and self._collision_result[ns] is not None
         ]
         if collisions:
             result = self._aggregate(collisions)
             manager.get_logger().warning(f"[swarm] {result}")
             return result
-        if nav.go_to_pose_status == TaskResult.SUCCEEDED:
+        if nav_task in done:
+            if nav.go_to_pose_status == TaskResult.SUCCEEDED:
+                return ExperimentResult.SUCCESS
+            manager.get_logger().warning(
+                f"[swarm] navigation ended: {nav.go_to_pose_status}"
+            )
+            return ExperimentResult.FAILURE_NAVIGATION
+
+        # Only the deadline came.
+        if self.station_keeping:
+            # Holding the centroid for the full episode IS the task. The
+            # orchestrator runs `hold`, which by construction never converges,
+            # so exhausting timeout_duration without a collision is a SUCCESS.
+            manager.get_logger().info(
+                f"Episode '{experiment_tag}' held station for the full "
+                "episode; station-keeping complete."
+            )
             return ExperimentResult.SUCCESS
         manager.get_logger().warning(
-            f"[swarm] navigation ended: {nav.go_to_pose_status}"
+            f"Episode '{experiment_tag}' timed out before the swarm converged"
         )
-        return ExperimentResult.FAILURE_NAVIGATION
+        return ExperimentResult.FAILURE_TIMEOUT
 
     async def cancel(self) -> None:
         if self._swarm_nav is not None:

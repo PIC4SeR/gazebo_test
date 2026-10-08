@@ -78,6 +78,11 @@ class ExperimentManager(Node):
         timeout_duration = float(
             self.declare_parameter("timeout_duration", Parameter.Type.DOUBLE).value  # type: ignore
         )
+        # The episode timeout runs on sim time (utils/sim_timeout.py). If the
+        # simulator stops advancing it never fires, so a wall-clock guard of
+        # timeout_duration * stall_factor ends the episode as
+        # FAILURE_SIM_STALLED instead (5 == tolerate a real-time factor >= 0.2).
+        self.stall_factor = float(self.declare_parameter("stall_factor", 5.0).value)
 
         self.use_recorder = bool(
             self.declare_parameter("use_recorder", Parameter.Type.BOOL).value

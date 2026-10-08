@@ -79,6 +79,8 @@ class GoToPoseTask(ExperimentTask):
         return nodes
 
     async def setup(self) -> None:
+        # Collisions are scored from this robot's own sensor, by its own name.
+        self.manager.evaluation_handler.watch_robots([self.robot_namespace])
         self.navigator = NavigationHandler(
             node=self.manager,
             navigation_result_callback=self.manager.evaluation_handler.set_navigation_result_event,

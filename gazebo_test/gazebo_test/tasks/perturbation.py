@@ -226,6 +226,9 @@ class PerturbationTask(FormationTask):
 
             still = (
                 self._humans_moved
+                # A stalled pedestrian is as still as one that arrived: the scene
+                # is only finished once every non-cyclic agent reached its goal.
+                and self._humans_arrived()
                 # A fleet that flew apart and then stopped is at rest, but it is
                 # not a formation: steady state means settled *and* intact.
                 and over_for == 0.0
@@ -264,25 +267,23 @@ class PerturbationTask(FormationTask):
             )
             return ExperimentResult.FAILURE_NAVIGATION
 
-        # Race collisions and the formation monitor against the episode timeout.
-        waiters = {}
-        for ns in self._robot_names:
-            waiters[asyncio.ensure_future(self._collision_event[ns].wait())] = ns
+        # Race collisions and the formation monitor against the episode's
+        # sim-time deadline.
+        collision_tasks = {
+            asyncio.ensure_future(self._collision_event[ns].wait()): ns
+            for ns in self._robot_names
+        }
         monitor_task = asyncio.ensure_future(self._monitor_formation())
-        waiters[monitor_task] = None  # None ns == the watcher, not a robot
-
-        done, pending = await asyncio.wait(
-            set(waiters),
-            timeout=manager.evaluation_handler.timeout_duration,
-            return_when=asyncio.FIRST_COMPLETED,
+        done, stalled = await self._wait_with_deadline(
+            {monitor_task, *collision_tasks}, experiment_tag
         )
-        for task in pending:
-            task.cancel()
+        if stalled:
+            return ExperimentResult.FAILURE_SIM_STALLED
 
         collisions = [
             self._collision_result[ns]
-            for task, ns in waiters.items()
-            if ns is not None and task in done and self._collision_result[ns] is not None
+            for task, ns in collision_tasks.items()
+            if task in done and self._collision_result[ns] is not None
         ]
         if collisions:
             result = self._aggregate(collisions)
@@ -299,6 +300,7 @@ class PerturbationTask(FormationTask):
         manager.get_logger().warning(
             f"Episode '{experiment_tag}' never reached steady state "
             f"(max spread {self._max_spread:.2f} m, agents moved: "
-            f"{self._humans_moved})"
+            f"{self._humans_moved}, agents not arrived: "
+            f"{sorted(self._agents_pending or [])})"
         )
         return ExperimentResult.FAILURE_TIMEOUT

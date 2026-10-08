@@ -121,6 +121,28 @@ def test_single_robot_config_rejected():
     raise AssertionError("expected ValueError when 'robots:' is absent")
 
 
+SPAWN_YAML = """
+robots:
+  - {name: turtlebot2, model: turtlebot2, spawn: [0.0, 0.0, 0.0]}
+  - {name: jackal,     model: jackal,     spawn: [1.0, 0.0, 0.0]}
+episodes: [episode_1, episode_2]
+spawn_region: {centroid: [2.0, -1.0], radius: 1.5, min_gap: 0.6, seed: 3}
+poses:
+  episode_2: {turtlebot2: [5.0, 5.0, 0.0], jackal: [6.0, 5.0, 0.0]}
+"""
+
+
+def test_spawn_region_fills_episodes_without_poses():
+    parsed = parse_fleet_yaml(_write(SPAWN_YAML))
+    ep1 = parsed["poses"]["episode_1"]
+    mean = [sum(v[0] for v in ep1.values()) / 2, sum(v[1] for v in ep1.values()) / 2]
+    assert abs(mean[0] - 2.0) < 1e-9 and abs(mean[1] + 1.0) < 1e-9
+    assert parsed["poses"]["episode_2"]["jackal"] == [6.0, 5.0, 0.0]   # explicit poses win
+    ent = parsed["initial_state_entities"]["episode_1"]["jackal"]
+    assert abs(ent.pose.position.x - ep1["jackal"][0]) < 1e-9
+    assert parse_fleet_yaml(_write(SPAWN_YAML))["poses"] == parsed["poses"]   # reproducible
+
+
 if __name__ == "__main__":
     test_parse_fleet_yaml()
     test_missing_goal_raises()
@@ -128,4 +150,5 @@ if __name__ == "__main__":
     test_missing_pose_raises_even_without_goals()
     test_single_robot_fleet_of_one()
     test_single_robot_config_rejected()
+    test_spawn_region_fills_episodes_without_poses()
     print("PASS parse_fleet_yaml self-check")

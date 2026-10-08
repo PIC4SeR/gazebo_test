@@ -6,6 +6,7 @@
 # use the pose and the goal to determine success of the navigation
 # if a timeout is reached, the navigation is considered a failure
 
+import functools
 import os
 from rclpy.node import Node
 from enum import Enum
@@ -28,6 +29,9 @@ class ExperimentResult(Enum):
     FAILURE_COLLISION_ROBOT = 7
     # Perturbation: the swarm's group center drifted out of tolerance.
     FAILURE_DRIFT = 8
+    # The episode's sim-time deadline never came: the simulator stopped
+    # advancing (see SimTimeout). A harness failure, not the controller's.
+    FAILURE_SIM_STALLED = 9
 
     def __str__(self):
         match self:
@@ -45,8 +49,61 @@ class ExperimentResult(Enum):
                 return "Failure: Navigation failure"
             case ExperimentResult.FAILURE_DRIFT:
                 return "Failure: Group center drifted out of tolerance"
+            case ExperimentResult.FAILURE_SIM_STALLED:
+                return "Failure: Simulation stalled"
             case ExperimentResult.RESULT_NOT_SET:
                 return "Result not set"
+
+
+# Most severe first.
+_CONTACT_SEVERITY = (
+    ExperimentResult.FAILURE_COLLISION_AGENT,
+    ExperimentResult.FAILURE_COLLISION_ROBOT,
+    ExperimentResult.FAILURE_COLLISION_ENVIRONMENT,
+)
+
+
+def classify_contact(own, objects_hit, robot_names=()):
+    """What a robot's collision sensor hit, as an ExperimentResult.
+
+    Entries are Gazebo scoped collision names, ``model::link::collision``, and
+    are judged by their MODEL name:
+
+    * the sensor's own model (``own``) is skipped. gazebo_ros_collision used to
+      report whichever body Gazebo listed second, which is sometimes its own:
+      in the 2026-09-10 sweep ``/turtlebot2/collision`` reported
+      ``turtlebot2::base_footprint::...`` and 5 of 8 robot-robot contacts were
+      scored as environment collisions;
+    * a model containing "agent" is a pedestrian (HuNav actors and their
+      ``<name>_body`` collision models);
+    * a model named exactly like a fleet robot is a robot -- exactly, because
+      "turtlebot2" is a prefix of "turtlebot2_1";
+    * anything else is the environment.
+
+    The most severe label over all entries wins. When every entry was the
+    sensor's own model (a plugin that still reports its own body) the contact is
+    real but its partner unknown: that is logged, and reported as an
+    environment collision.
+    """
+    labels = []
+    for entry in objects_hit:
+        model = entry.split("::", 1)[0]
+        if model == own:
+            continue
+        if "agent" in model:
+            labels.append(ExperimentResult.FAILURE_COLLISION_AGENT)
+        elif model in robot_names:
+            labels.append(ExperimentResult.FAILURE_COLLISION_ROBOT)
+        else:
+            labels.append(ExperimentResult.FAILURE_COLLISION_ENVIRONMENT)
+    if not labels:
+        rclpy.logging.get_logger("classify_contact").warning(
+            f"collision sensor of '{own}' reported only its own body "
+            f"{list(objects_hit)}; is gazebo_ros_collision up to date? "
+            "Counting it as an environment collision."
+        )
+        return ExperimentResult.FAILURE_COLLISION_ENVIRONMENT
+    return min(labels, key=_CONTACT_SEVERITY.index)
 
 
 class ExperimentEvaluator:
@@ -56,14 +113,30 @@ class ExperimentEvaluator:
         self._start_time_lock = threading.Lock()
         self.node = node
         self._loop = None
-
-        node.create_subscription(
-            Collision, "/jackal/collision", self._collision_callback, 10
-        )
+        # Collision topics come from watch_robots(): a task knows its robots
+        # only after loading its goals file.
+        self.robot_names: tuple = ()
+        self._collision_subs = []
         self.logger = rclpy.logging.get_logger("experiment_evaluator")
         self.get_clock = node.get_clock
         self.timeout_timer = None
         # self.logger.set_level(LoggingSeverity.DEBUG)
+
+    def watch_robots(self, names) -> None:
+        """Let a collision of ANY of these robots end the episode.
+
+        Each contact is judged by :func:`classify_contact` against the robot
+        that reported it (its own bodies are skipped) with the whole list as
+        the robots it may have hit."""
+        for sub in self._collision_subs:
+            self.node.destroy_subscription(sub)
+        self.robot_names = tuple(names)
+        self._collision_subs = [
+            self.node.create_subscription(
+                Collision, f"/{name}/collision",
+                functools.partial(self._collision_callback, name), 10)
+            for name in self.robot_names
+        ]
 
     def initialize(self):
         """
@@ -133,14 +206,14 @@ class ExperimentEvaluator:
         self._loop.call_soon_threadsafe(self.timeout_event.set)
         self.logger.info("Timeout reached")
 
-    def _collision_callback(self, msg: Collision):
-        """Callback for the collision sensor.
-        If a collision is detected, set the collision_event.
-        Then verify if the collision is with an agent or the environment.
-        If the collision is with an agent, set the collision_with_agent flag to True.
-        If the collision is with the environment, set the collision_with_environment flag to True.
-        Finally, stop the experiment and notify the experiment that a collision has been detected using asyncio event.
+    def _collision_callback(self, robot: str, msg: Collision):
+        """Callback for one watched robot's collision sensor.
+        The first contact after the episode start ends it: it is classified by
+        :func:`classify_contact` (agent, robot or environment), recorded as the
+        experiment result, and the experiment is notified through the asyncio
+        collision_event.
         Args:
+            robot (str): The robot whose sensor published ``msg``.
             msg (Collision): The collision message from the collision sensor.
         """
         # assure that the message is arrived after the start time
@@ -162,12 +235,9 @@ class ExperimentEvaluator:
         self.logger.debug("Collision detected")
         self.logger.debug(f"Collision with: {msg.objects_hit}")
         self.logger.debug(f"Collision time: {msg.header.stamp}")
-        if "agent" in msg.objects_hit[0]:
-            self.experiment_result = ExperimentResult.FAILURE_COLLISION_AGENT
-            self.logger.info("Collision with agent detected")
-        else:
-            self.experiment_result = ExperimentResult.FAILURE_COLLISION_ENVIRONMENT
-            self.logger.info("Collision with environment detected")
+        result = classify_contact(robot, msg.objects_hit, self.robot_names)
+        self.experiment_result = result
+        self.logger.info(f"[{robot}] {result} detected")
         # Stop the experiment
         self.logger.debug("Stopping the experiment")
         # notify the experiment that a collision has been detected using asyncio event

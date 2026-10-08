@@ -10,6 +10,7 @@ from nav2_msgs.srv import ClearEntireCostmap, ManageLifecycleNodes
 from rclpy.action import ActionClient
 from rclpy.node import Node
 import asyncio
+import functools
 from rclpy.logging import get_logger
 
 
@@ -29,9 +30,10 @@ class BasicNavigator:
         self._loop = None
 
         self.go_to_pose_goal_handle = None
-        self.go_to_pose_result = None
+        self.go_to_pose_future = None      # the current goal's result future
+        self.go_to_pose_result = None      # ...and the response it delivered
         self.feedback = None
-        self.go_to_pose_status = GoalStatus.STATUS_UNKNOWN
+        self.go_to_pose_status = TaskResult.UNKNOWN
 
         self.go_to_pose_event = asyncio.Event()
 
@@ -86,6 +88,12 @@ class BasicNavigator:
         goal_msg.pose = pose
         goal_msg.behavior_tree = behavior_tree
 
+        # A new goal has no result yet: nothing a previous goal reported may be
+        # read as this one's.
+        self.go_to_pose_status = TaskResult.UNKNOWN
+        self.go_to_pose_result = None
+        self.go_to_pose_event.clear()
+
         self.logger.debug(
             "Navigating to goal: "
             + str(pose.pose.position.x)
@@ -96,8 +104,10 @@ class BasicNavigator:
         send_goal_future = self.nav_to_pose_client.send_goal_async(
             goal_msg, self._feedbackCallback
         )
-        self.go_to_pose_goal_handle = await send_goal_future
-        if not self.go_to_pose_goal_handle.accepted:
+        handle = await send_goal_future
+        self.go_to_pose_goal_handle = handle
+        self.go_to_pose_future = None
+        if not handle.accepted:
             self.logger.error(
                 "Goal to "
                 + str(pose.pose.position.x)
@@ -107,19 +117,35 @@ class BasicNavigator:
             )
             return False
 
-        self.go_to_pose_result = self.go_to_pose_goal_handle.get_result_async()
-        self.go_to_pose_result.add_done_callback(self._go_to_pose_result_callback)
+        future = handle.get_result_async()
+        self.go_to_pose_future = future
+        # Bound to THIS goal: a previous goal's late result must not land here.
+        future.add_done_callback(
+            functools.partial(self._go_to_pose_result_callback, handle)
+        )
         return True
 
-    async def cancelGoToPose(self):
-        """Cancel pending task of the `NavToPose` action.
-        This will cancel the current task and set the status to CANCELED.
-        Returns:
-            None
+    async def cancelGoToPose(self, timeout: float = 10.0):
+        """Cancel the current `NavToPose` goal and wait until it has ended.
+
+        Returning as soon as the cancel REQUEST was accepted left the goal
+        running: its CANCELED result then arrived inside the next episode and
+        ended it as a ~1 s "Navigation failure" (8 of 90 runs of the 2026-09-10
+        sweep). Waiting also keeps a goal from living through the next
+        episode's reset, which restarts sim time. No-op when no goal is active.
+        ``timeout``: wall seconds to wait for the goal to end.
         """
+        future, handle = self.go_to_pose_future, self.go_to_pose_goal_handle
+        if future is None or future.done():
+            return
         self.logger.debug("Canceling current task.")
-        if self.go_to_pose_result and not self.go_to_pose_result.done():
-            await self.go_to_pose_goal_handle.cancel_goal_async()
+        await handle.cancel_goal_async()
+        try:
+            await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(
+                f"the cancelled goal did not end within {timeout:.0f} s"
+            )
 
     def getResult(self, goal_result: GoalStatus) -> TaskResult:
         """Get the pending action result message
@@ -279,9 +305,13 @@ class BasicNavigator:
         self.logger.debug("All services are available.")
         return
 
-    def _go_to_pose_result_callback(self, future):
+    def _go_to_pose_result_callback(self, handle, future):
+        if handle is not self.go_to_pose_goal_handle:
+            self.logger.debug("Ignoring the result of a previous goal")
+            return
         self.logger.debug("Received action result message")
         self.go_to_pose_result = future.result()
         self.go_to_pose_status = self.getResult(self.go_to_pose_result)
         self.logger.debug(f"Go to pose status: {self.go_to_pose_status}")
         self._loop.call_soon_threadsafe(self.go_to_pose_event.set)
+

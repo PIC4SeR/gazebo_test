@@ -28,8 +28,9 @@ from gazebo_test.utils.common_utils import (
     get_posestamped_from_entity,
     parse_fleet_yaml,
 )
-from gazebo_test.utils.evaluation_handler import ExperimentResult
+from gazebo_test.utils.evaluation_handler import ExperimentResult, classify_contact
 from gazebo_test.utils.navigation_handler import NavigationHandler
+from gazebo_test.utils.sim_timeout import SimTimeout
 
 # Most-severe-first ordering used to aggregate per-robot outcomes into one
 # episode result.
@@ -39,6 +40,7 @@ _RESULT_SEVERITY = [
     ExperimentResult.FAILURE_COLLISION_ENVIRONMENT,
     ExperimentResult.FAILURE_NAVIGATION,
     ExperimentResult.FAILURE_TIMEOUT,
+    ExperimentResult.FAILURE_SIM_STALLED,
 ]
 
 
@@ -168,23 +170,24 @@ class MultiRobotGoToPoseTask(ExperimentTask):
         )
         episode_result = ExperimentResult.FAILURE_TIMEOUT
         try:
-            # ponytail: wall-clock timeout (sim usually runs ~realtime). Switch to
-            # a sim-time ROS timer like the single-robot evaluator if RTF drifts.
-            results = await asyncio.wait_for(
+            robots = asyncio.ensure_future(
                 asyncio.gather(
                     *(
                         self._run_single_robot(ns, robot_goal_poses[ns])
                         for ns in self.navigators
                     )
-                ),
-                timeout=manager.evaluation_handler.timeout_duration,
+                )
             )
-            episode_result = self._aggregate(results)
-        except asyncio.TimeoutError:
-            manager.get_logger().warning(
-                f"Episode '{experiment_tag}' timed out before all robots reached goal"
-            )
-            episode_result = ExperimentResult.FAILURE_TIMEOUT
+            done, stalled = await self._wait_with_deadline({robots}, experiment_tag)
+            if robots in done:
+                episode_result = self._aggregate(robots.result())
+            elif stalled:
+                episode_result = ExperimentResult.FAILURE_SIM_STALLED
+            else:
+                manager.get_logger().warning(
+                    f"Episode '{experiment_tag}' timed out before all robots reached goal"
+                )
+                episode_result = ExperimentResult.FAILURE_TIMEOUT
         finally:
             if manager.use_evaluator:
                 await manager.hunav_evaluator_handler.stop_recording()
@@ -198,6 +201,40 @@ class MultiRobotGoToPoseTask(ExperimentTask):
             f"Episode '{experiment_tag}' run {run_id} result: {episode_result}"
         )
         return episode_result
+
+    async def _wait_with_deadline(self, waiters, experiment_tag: str):
+        """Wait for the first of ``waiters`` or the episode's deadline.
+
+        The deadline is ``timeout_duration`` of SIM time (:class:`SimTimeout`),
+        so a slow simulator no longer shortens the episode. A wall-clock guard
+        of ``timeout_duration * stall_factor`` catches a simulator that stopped
+        advancing, where the deadline would never come.
+
+        Returns ``(done, stalled)``: the finished waiters (never the deadline
+        itself) and whether the guard tripped first. Unfinished waiters are
+        cancelled.
+        """
+        manager = self.manager
+        seconds = manager.evaluation_handler.timeout_duration
+        with SimTimeout(manager, seconds, self._loop) as deadline:
+            deadline_task = asyncio.ensure_future(deadline.event.wait())
+            done, pending = await asyncio.wait(
+                set(waiters) | {deadline_task},
+                timeout=seconds * manager.stall_factor,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            sim_s, wall_s = deadline.elapsed()
+        stalled = not done
+        if stalled:
+            manager.get_logger().error(
+                f"Episode '{experiment_tag}' stalled: {sim_s:.1f} s of sim time "
+                f"passed in {wall_s:.0f} s of wall time, short of its "
+                f"{seconds:.0f} s deadline"
+            )
+        return done - {deadline_task}, stalled
 
     async def _run_single_robot(
         self, ns: str, goal_pose: PoseStamped
@@ -245,13 +282,9 @@ class MultiRobotGoToPoseTask(ExperimentTask):
         return _callback
 
     def _classify_collision(self, ns: str, msg: Collision) -> ExperimentResult:
-        hit = msg.objects_hit[0] if msg.objects_hit else ""
-        if "agent" in hit:
-            return ExperimentResult.FAILURE_COLLISION_AGENT
-        # Another fleet robot (not this one) named in the contact.
-        if any(other != ns and other in hit for other in self._robot_names):
-            return ExperimentResult.FAILURE_COLLISION_ROBOT
-        return ExperimentResult.FAILURE_COLLISION_ENVIRONMENT
+        # Any robot of the fleet can end the episode; each contact is judged
+        # against the robot that reported it, with the fleet as its peers.
+        return classify_contact(ns, msg.objects_hit, self._robot_names)
 
     @staticmethod
     def _aggregate(results: List[ExperimentResult]) -> ExperimentResult:
