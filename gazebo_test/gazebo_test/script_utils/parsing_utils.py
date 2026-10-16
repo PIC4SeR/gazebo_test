@@ -145,6 +145,8 @@ def parse_experiment_name(experiment_name: str) -> Dict:
         "agents_configuration_file": agents_configuration_file,
         "world_pkg_name": world_pkg_name,
         "agents_pkg_name": agents_pkg_name,
+        # Share dir of the package registering the experiment ({pkg_share} placeholder).
+        "pkg_share": get_package_share_directory(experiment_pkg_name),
         "camera_config_file": camera_config_path,
         "render_vars": render_vars,
         "additional_launch_files": experiment.get("additional_launch_files", []),
@@ -155,6 +157,10 @@ def parse_experiment_name(experiment_name: str) -> Dict:
         "task": experiment.get("task", "go_to_pose"),
         # Optional per-experiment episode budget (sim s); None -> the config's.
         "timeout_duration": experiment.get("timeout_duration"),
+        # Optional wall-clock stall guard multiplier; None -> the config's.
+        "stall_factor": experiment.get("stall_factor"),
+        # Optional comma-separated per-robot topics to record; None -> all.
+        "bag_robot_topics": experiment.get("bag_robot_topics"),
     }
 
 

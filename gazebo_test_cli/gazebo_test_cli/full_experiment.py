@@ -444,6 +444,13 @@ def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
             "experiment's declared 'task'; defaults to go_to_pose."
         ),
     )
+    run_parser.add_argument(
+        "--episodes",
+        action="store",
+        default=None,
+        help="Comma-separated subset of the goals file's episodes to run "
+        "(e.g. episode_1,episode_3); default all.",
+    )
 
     # YAML/params path arguments complete to *.yaml files.
     _yaml_completer = FilesCompleter(("yaml", "yml"), directories=True)
@@ -626,6 +633,10 @@ def run(args: argparse.Namespace):
         # swarm_control hybrid.launch.py): the encoded robots list and its size.
         "robots": robots_arg,
         "n_robots": len(fleet_robots),
+        # The lone robot's namespace (first robot of a fleet), e.g. for additional launch files.
+        "namespace": primary_robot,
+        # Files shipped by the experiment's own package, e.g. a per-cell params_file.
+        "pkg_share": experiment_dict["pkg_share"],
     }
     navigation_launch_command = None
     if not args.no_navigation_launch:
@@ -743,6 +754,7 @@ def run(args: argparse.Namespace):
 
         # For each additional launch file, create a new pane and run the launch file.
         for launch_file in additional_launch_files:
+            launch_file = _expand_launch_placeholders(launch_file, launch_placeholders)
             window_name = _launch_window_name(launch_file)
             session.new_window(attach=True, window_name=window_name)
             window = session.active_window
@@ -809,6 +821,17 @@ def run(args: argparse.Namespace):
             f"timeout_duration:={float(experiment_dict['timeout_duration'])}"
             if experiment_dict.get("timeout_duration") else ""
         )
+        # ... and its wall-clock stall guard, for scenes expected to run slow.
+        stall_arg = (
+            f"stall_factor:={float(experiment_dict['stall_factor'])}"
+            if experiment_dict.get("stall_factor") else ""
+        )
+        episodes_arg = f"episodes:={args.episodes}" if args.episodes else ""
+        # Large fleets record a subset of each robot's topics (experiment key).
+        bag_topics_arg = (
+            f"bag_robot_topics:={experiment_dict['bag_robot_topics']}"
+            if experiment_dict.get("bag_robot_topics") else ""
+        )
         pane.send_keys(
             f"ros2 launch gazebo_test experiment_manager.launch.py use_recorder:={args.bag_record}\
                 use_evaluator:={args.hunav_eval} record_maps:={args.record_maps} \
@@ -825,6 +848,9 @@ def run(args: argparse.Namespace):
                 {watchdog_required_nodes_arg} \
                 {params_file_arg} \
                 {timeout_arg} \
+                {stall_arg} \
+                {episodes_arg} \
+                {bag_topics_arg} \
                 task:={task} \
                 ; tmux wait-for -S process_finished_{ros_domain_id}"
         )

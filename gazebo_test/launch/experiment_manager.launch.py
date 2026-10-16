@@ -28,6 +28,7 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     algorithm_name: DeclareLaunchArgument = ExperimentManagerArgs.algorithm_name
     base_path: DeclareLaunchArgument = ExperimentManagerArgs.base_path
     timeout_duration: DeclareLaunchArgument = ExperimentManagerArgs.timeout_duration
+    stall_factor: DeclareLaunchArgument = ExperimentManagerArgs.stall_factor
     use_recorder: DeclareLaunchArgument = ExperimentManagerArgs.use_recorder
     use_evaluator: DeclareLaunchArgument = ExperimentManagerArgs.use_evaluator
     record_maps: DeclareLaunchArgument = ExperimentManagerArgs.record_maps
@@ -45,6 +46,8 @@ class LaunchArguments(LaunchArgumentsBaseParam):
         ExperimentManagerArgs.watchdog_required_nodes
     )
     task: DeclareLaunchArgument = ExperimentManagerArgs.task
+    episodes: DeclareLaunchArgument = ExperimentManagerArgs.episodes
+    bag_robot_topics: DeclareLaunchArgument = ExperimentManagerArgs.bag_robot_topics
     params_file: DeclareLaunchArgument = NavigationArgs.params_file
 
 
@@ -78,6 +81,10 @@ def launch_setup(context, *args, **kwargs):
             {"nav_params_file": LaunchConfiguration("params_file").perform(context)},
             # Selects the experiment task (go_to_pose | multirobot | ...).
             {"task": LaunchConfiguration("task").perform(context)},
+            # Subset of the goals file's episodes to run (empty -> all).
+            {"episodes": LaunchConfiguration("episodes").perform(context)},
+            # Per-robot topics the bag records (empty -> all).
+            {"bag_robot_topics": LaunchConfiguration("bag_robot_topics").perform(context)},
             # Results sub-folder identifier (empty -> goals_and_poses stem).
             {"experiment_name": LaunchConfiguration("experiment_name").perform(context)},
         ],

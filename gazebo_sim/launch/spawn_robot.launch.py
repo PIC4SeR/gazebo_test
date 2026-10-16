@@ -11,6 +11,7 @@ from launch.actions import (
     OpaqueFunction,
     RegisterEventHandler,
     Shutdown,
+    TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
@@ -42,12 +43,20 @@ PER_ROBOT_FLAGS = (
     "use_lidar_gpu",
 )
 
+# Fleet spawns are staggered by this much per robot. All at once, gzserver's
+# /spawn_entity service drops some requests (2-4 of 16 TurtleBot2s never
+# appeared, their spawner stuck at "Calling service /spawn_entity"); one TB2
+# takes ~0.5 s to insert, so 1 s keeps the calls from queueing.
+FLEET_SPAWN_STAGGER_S = 1.0
+
 # Extra per-robot keys forwarded verbatim into a PROFILE_DISPATCHED robot's launch
 # (e.g. turtlebot3's sensor toggles). launch rejects launch_arguments the included
 # file does not declare, so only list keys the profile(s) actually declare.
 PROFILE_PASSTHROUGH = (
     "enable_lidar",
     "enable_camera",
+    "enable_cliff_sensors",   # turtlebot2 only
+    "enable_imu",             # turtlebot2 only
 )
 
 
@@ -91,6 +100,13 @@ class LaunchArguments(LaunchArgumentsBaseParam):
     use_gazebo_controllers: DeclareLaunchArgument = RobotArgs.use_gazebo_controllers
     use_collision_sensor: DeclareLaunchArgument = RobotArgs.use_collision_sensor
     use_lidar_gpu: DeclareLaunchArgument = RobotArgs.use_lidar_gpu
+    component_container: DeclareLaunchArgument = DeclareLaunchArgument(
+        "component_container",
+        default_value="",
+        description="Existing component container (e.g. /fleet_components) that "
+        "TurtleBot2 spawns load their robot_state_publisher into instead of a "
+        "process of their own. Empty = one process per robot.",
+    )
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -121,6 +137,7 @@ def _spawn(context, launch_configurations):
     use_collision_sensor = LaunchConfiguration("use_collision_sensor").perform(context)
     use_lidar_gpu = LaunchConfiguration("use_lidar_gpu").perform(context)
     z = LaunchConfiguration("z").perform(context)
+    container = LaunchConfiguration("component_container").perform(context).strip()
 
     if not fleet:
         # Single-robot path. Run the lone robot fully namespaced under its own
@@ -149,7 +166,7 @@ def _spawn(context, launch_configurations):
         "use_lidar_gpu": use_lidar_gpu,
     }
     actions = [LogInfo(msg=f"Spawning fleet of {len(fleet)} robots")]
-    for robot in fleet:
+    for index, robot in enumerate(fleet):
         x, y, yaw = robot.get("spawn", [0.0, 0.0, 0.0])
         # Each robot may override the contract flags; otherwise inherit the global.
         per_robot_flags = {
@@ -161,7 +178,7 @@ def _spawn(context, launch_configurations):
         extra_profile_args = {
             key: _flag(robot[key]) for key in PROFILE_PASSTHROUGH if key in robot
         }
-        actions += _spawn_robot_with_controllers(
+        robot_actions = _spawn_robot_with_controllers(
             context,
             robot_name=str(robot.get("model", "jackal")),
             namespace=str(robot["name"]),
@@ -170,7 +187,13 @@ def _spawn(context, launch_configurations):
             z=z,
             yaw=yaw,
             extra_profile_args=extra_profile_args,
+            component_container=container,
             **per_robot_flags,
+        )
+        actions.append(
+            TimerAction(period=index * FLEET_SPAWN_STAGGER_S, actions=robot_actions)
+            if index
+            else GroupAction(actions=robot_actions)
         )
     return actions
 
@@ -187,6 +210,7 @@ def _spawn_robot_with_controllers(
     use_collision_sensor,
     use_lidar_gpu,
     extra_profile_args=None,
+    component_container="",
 ):
     namespace = namespace.strip("/")
 
@@ -209,6 +233,9 @@ def _spawn_robot_with_controllers(
                     "use_collision_sensor": use_collision_sensor,
                     "use_lidar_gpu": use_lidar_gpu,
                     **(extra_profile_args or {}),
+                    # only turtlebot2 declares it (launch rejects undeclared args)
+                    **({"component_container": component_container}
+                       if component_container and robot_name == "turtlebot2" else {}),
                 },
             )
         ]

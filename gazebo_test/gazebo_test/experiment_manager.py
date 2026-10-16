@@ -292,11 +292,17 @@ class ExperimentManager(Node):
             timeout_duration=timeout_duration,
         )
         if self.use_recorder:
+            robot_topics = [
+                t.strip()
+                for t in str(self.declare_parameter("bag_robot_topics", "").value).split(",")
+                if t.strip()
+            ]
             self.bag_recorder = BagRecorder(
                 self,
                 algorithm=self.algorithm_name,  # type: ignore
                 base_path=self.base_path,  # type: ignore
                 record_maps=self.record_maps,
+                robot_topics=robot_topics or None,
             )
         if self.use_evaluator:
             self.hunav_evaluator_handler = HunavEvaluatorHandler(
@@ -316,6 +322,16 @@ class ExperimentManager(Node):
 
         # The task loads its own entities and returns the episode tags to schedule.
         episode_tags = self.task.load_entities(Path(yaml_path))
+        selected = [
+            tag.strip()
+            for tag in str(self.declare_parameter("episodes", "").value).split(",")
+            if tag.strip()
+        ]
+        if selected:
+            unknown = sorted(set(selected) - set(episode_tags))
+            if unknown:
+                raise ValueError(f"episodes {unknown} not in {yaml_path}: {episode_tags}")
+            episode_tags = [tag for tag in episode_tags if tag in selected]
         self._job_coordinator.configure_jobs(
             experiment_tags=episode_tags,
             repetitions=self.repetitions,

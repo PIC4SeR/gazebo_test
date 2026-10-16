@@ -30,7 +30,6 @@ install(DIRECTORY
 )
 
 experiment_register_configs(${PROJECT_NAME} EXPERIMENT_FILE "experiments/experiments.yaml")
-experiment_register_configs(${PROJECT_NAME}_swarm_profiles
-  EXPERIMENT_FILE "experiments/swarm_formation_profiles.yaml")
+# Swarm experiments live in swarm_experiments (swarm_control repo).
 
 ament_package()

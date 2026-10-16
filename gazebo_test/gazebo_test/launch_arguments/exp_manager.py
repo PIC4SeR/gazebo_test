@@ -23,6 +23,12 @@ class ExperimentManagerArgs:
         default_value="",
         description="Timeout duration for the experiment manager",
     )
+    stall_factor: DeclareLaunchArgument = DeclareLaunchArgument(
+        "stall_factor",
+        default_value="",
+        description="Wall-clock guard = timeout_duration * stall_factor "
+        "(lowest tolerated real-time factor = 1 / stall_factor)",
+    )
     use_recorder: DeclareLaunchArgument = DeclareLaunchArgument(
         "use_recorder",
         choices=["true", "false", "True", "False"],
@@ -98,6 +104,18 @@ class ExperimentManagerArgs:
             "Comma-separated required node names for the experiment watchdog. "
             "Use 'none' to disable node checks."
         ),
+    )
+    bag_robot_topics: DeclareLaunchArgument = DeclareLaunchArgument(
+        "bag_robot_topics",
+        default_value="",
+        description="Comma-separated per-robot topics to record, relative to each "
+        "namespace (e.g. ground_truth,collision,goal_pose); empty = all",
+    )
+    episodes: DeclareLaunchArgument = DeclareLaunchArgument(
+        "episodes",
+        default_value="",
+        description="Comma-separated subset of the goals file's episodes to run "
+        "(empty = all)",
     )
     task: DeclareLaunchArgument = DeclareLaunchArgument(
         "task",

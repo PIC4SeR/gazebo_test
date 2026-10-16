@@ -150,12 +150,15 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
     # motion-model selection (default_motion_model / orca.* / per-agent
     # motion_model). Files keyed by a specific node name (e.g. `hunav_loader:`)
     # simply won't apply here, keeping SFM the default; files keyed under `/**:`
-    # apply to the manager too.
+    # apply to the manager too. emulate_tty: the manager reports its per-episode
+    # motion-model draws ([MM strategy=random] ...) with printf, which a pipe
+    # block-buffers, so the last episodes' lines were lost when the run ended.
     hunav_manager_node = Node(
         package="hunav_agent_manager",
         executable="hunav_agent_manager",
         name="hunav_agent_manager",
         output="screen",
+        emulate_tty=True,
         parameters=[agent_conf_file, {"use_sim_time": _resolve_config("use_sim_time")}],
     )
 

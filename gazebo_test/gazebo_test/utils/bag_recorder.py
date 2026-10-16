@@ -1,5 +1,5 @@
 import threading
-from typing import Optional
+from typing import Optional, Sequence
 import rclpy
 from rclpy.node import Node
 from rclpy.serialization import serialize_message
@@ -89,6 +89,7 @@ class BagRecorder:
         algorithm: str = "test",
         base_path: Optional[Path] = None,
         record_maps: bool = False,
+        robot_topics: Optional[Sequence[str]] = None,
     ):
         """
         Initialize the BagRecorder class.
@@ -110,6 +111,11 @@ class BagRecorder:
         self._write_lock = threading.Lock()
         self._write_failed = False
         self.logger = rclpy.logging.get_logger("bag_recorder")  # type: ignore
+        # Per-robot topics to record (names relative to the namespace, e.g.
+        # "ground_truth"); None = every template. Large fleets need the subset:
+        # the recorder runs in this one Python process and at 16+ robots the full
+        # set (~120 msgs/s per robot) kept it at a whole core.
+        self.robot_topics = set(robot_topics) if robot_topics else None
         self.get_clock = node.get_clock
         self.algorithm = algorithm
         self.topics_metadata = []
@@ -312,6 +318,8 @@ class BagRecorder:
                 **model_topic_templates.get(model, {}),
             }
             for rel, msg_type in templates.items():
+                if self.robot_topics is not None and rel not in self.robot_topics:
+                    continue
                 topic_name = f"/{ns_clean}/{rel}"
                 if topic_name in self._active_topics:
                     continue  # already registered (single-robot default, or dup)

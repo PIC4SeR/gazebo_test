@@ -15,5 +15,9 @@ experiment_manager:
     algorithm_name: "test_algorithm"
     base_path: "/workspaces/hunavsim_devcontainer/results/gazebo_experiments"
     timeout_duration: 60.0
+    # A deadline in sim time never comes if the simulator stops advancing, so
+    # an episode also ends after timeout_duration * stall_factor WALL seconds,
+    # recorded as "Failure: Simulation stalled" (5 == real-time factor >= 0.2).
+    stall_factor: 5.0
     repetitions: 2
     goals_and_poses_file: "/workspaces/hunavsim_ws/src/gazebo_test/gazebo_experiments/goals_and_poses/social_nav.yaml"

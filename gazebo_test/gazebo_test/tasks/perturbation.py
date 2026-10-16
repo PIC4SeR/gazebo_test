@@ -46,6 +46,7 @@ from typing import List
 
 import yaml
 
+from nav_msgs.msg import Odometry
 from people_msgs.msg import People
 
 from gazebo_test.tasks.base import register_task
@@ -90,6 +91,8 @@ class PerturbationTask(FormationTask):
         # would settle before the perturbation ever happened.
         self._humans_speed = 0.0
         self._humans_moved = False
+        # Newest ground truth per robot, from its own /<ns>/ground_truth topic.
+        self._ground_truth: dict = {}
 
     def load_entities(self, yaml_path: Path) -> List[str]:
         # Same parse as the formation task, but the centroid is the *hold point*
@@ -145,6 +148,31 @@ class PerturbationTask(FormationTask):
         # without it no agent ever "moves" and every episode times out, which
         # the timeout warning reports.
         self.manager.create_subscription(People, "/people", self._on_humans, 10)
+        # The formation monitor reads each robot's ground truth off its own topic.
+        # It used to ask Gazebo (/get_entity_state, one call per robot per poll);
+        # from 16 robots those replies stopped coming back, the poll never
+        # finished, and steady state could never be declared (2026-10-15 sweep).
+        for ns in self._robot_names:
+            self.manager.create_subscription(
+                Odometry, f"/{ns}/ground_truth", self._make_ground_truth_callback(ns), 10
+            )
+
+    def _make_ground_truth_callback(self, ns: str):
+        def _callback(msg: Odometry) -> None:
+            self._ground_truth[ns] = msg
+
+        return _callback
+
+    def _latest_states(self, names: List[str]) -> List[tuple]:
+        """(x, y, speed) of every robot with ground truth this episode."""
+        states = []
+        for name in names:
+            msg = self._ground_truth.get(name)
+            if msg is None:
+                continue
+            p, v = msg.pose.pose.position, msg.twist.twist.linear
+            states.append((p.x, p.y, math.hypot(v.x, v.y)))
+        return states
 
     def _on_humans(self, msg: People) -> None:
         # velocity.z carries the angular rate, not a third linear axis.
@@ -188,24 +216,17 @@ class PerturbationTask(FormationTask):
         manager = self.manager
         names = list(self._robot_names)
         self._max_spread = 0.0
+        # Forget the previous episode's poses: only messages from after the reset count.
+        self._ground_truth = {}
         baseline = None
         over_for = 0.0
         settled_for = 0.0
         while True:
             await asyncio.sleep(self._spread_poll_period)
-            try:
-                states = await asyncio.gather(
-                    *(manager.gazebo_env_handler.get_entity_state(n) for n in names)
-                )
-            except Exception as exc:  # transient service failure -- keep watching
-                manager.get_logger().debug(f"[perturbation] pose poll failed: {exc}")
-                continue
-            valid = [s for s in states if s is not None]
+            valid = self._latest_states(names)
             if len(valid) < 2:  # a single pose has no formation to speak of
                 continue
-            spread = self._spread(
-                [(s.pose.position.x, s.pose.position.y) for s in valid]
-            )
+            spread = self._spread([(x, y) for x, y, _ in valid])
             if baseline is None:
                 baseline = spread  # the formation's own starting size
                 continue
@@ -233,11 +254,7 @@ class PerturbationTask(FormationTask):
                 # not a formation: steady state means settled *and* intact.
                 and over_for == 0.0
                 and self._humans_speed <= self._settle_speed
-                and all(
-                    math.hypot(s.twist.linear.x, s.twist.linear.y)
-                    <= self._settle_speed
-                    for s in valid
-                )
+                and all(speed <= self._settle_speed for _, _, speed in valid)
             )
             settled_for = settled_for + self._spread_poll_period if still else 0.0
             if settled_for >= self._settle_hold:

@@ -10,6 +10,7 @@ sourced ROS environment for ``hunav_msgs`` / ``gazebo_msgs``.
 """
 
 import asyncio
+import itertools
 import pathlib
 import sys
 import types
@@ -26,29 +27,11 @@ from gazebo_test.utils.evaluation_handler import ExperimentResult  # noqa: E402
 
 
 def _state(x, y, speed=0.0):
-    """Minimal stand-in for gazebo_msgs EntityState (pose.position + twist)."""
-    return types.SimpleNamespace(
-        pose=types.SimpleNamespace(position=types.SimpleNamespace(x=x, y=y)),
-        twist=types.SimpleNamespace(linear=types.SimpleNamespace(x=speed, y=0.0)),
-    )
+    """One robot as the monitor reads it from ground truth: (x, y, speed)."""
+    return (x, y, speed)
 
 
 class _FakeManager:
-    """Serves one scripted poll per call, then repeats the last one forever."""
-
-    def __init__(self, script):
-        self._script = list(script)
-        self.polls = 0
-        self.gazebo_env_handler = types.SimpleNamespace(
-            get_entity_state=self._get_entity_state
-        )
-
-    async def _get_entity_state(self, name):
-        frame = self._script[min(self.polls, len(self._script) - 1)]
-        if name == "r2":  # one poll == one state per robot
-            self.polls += 1
-        return frame[name]
-
     def get_logger(self):
         return types.SimpleNamespace(
             info=lambda *a: None, debug=lambda *a: None, warning=lambda *a: None
@@ -57,7 +40,12 @@ class _FakeManager:
 
 def _task(script, humans_moved, humans_speed=0.0):
     task = PerturbationTask.__new__(PerturbationTask)  # skip the ROS __init__
-    task.manager = _FakeManager(script)
+    task.manager = _FakeManager()
+    # One scripted frame per poll, then the last one forever.
+    polls = itertools.count()
+    task._latest_states = lambda names: [
+        script[min(next(polls), len(script) - 1)][n] for n in names
+    ]
     task._robot_names = ["r1", "r2"]
     task._spread_tolerance = 0.75
     task._spread_poll_period = 0.5

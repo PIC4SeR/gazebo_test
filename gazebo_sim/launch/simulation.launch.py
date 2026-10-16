@@ -20,7 +20,12 @@ from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
 from gazebo_sim.launch_arguments.robot import RobotArgs
 from gazebo_sim.launch.launch_utils import map_to_odom_identity
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 from typing import List
+
+# Shared component container of a fleet's per-robot helper nodes (see add_map_to_odom).
+FLEET_CONTAINER = "/fleet_components"
 
 
 @dataclass(frozen=True)
@@ -116,13 +121,14 @@ def spawn_robot(context, *args, **kwargs):
         LogInfo(
             msg="start_hunav: " + LaunchConfiguration("start_hunav").perform(context)
         ).execute(context)
+        launch_arguments = LaunchArguments().launch_configurations_dict_with_context(context)
+        if LaunchConfiguration("robots").perform(context).strip():
+            launch_arguments["component_container"] = FLEET_CONTAINER
         return [
             include_scoped_launch_py_description(
                 pkg_name="gazebo_sim",
                 paths=["launch", "spawn_robot.launch.py"],
-                launch_arguments=LaunchArguments().launch_configurations_dict_with_context(
-                    context
-                ),
+                launch_arguments=launch_arguments,
             )
         ]
     else:
@@ -184,19 +190,40 @@ def generate_launch_description():
 def add_map_to_odom(context, *args, **kwargs):
     """Publish a map->odom identity transform per robot namespace.
 
-    The lone robot uses its own name (robot_name); a fleet gets one per robot
-    (namespace == robot name).
+    The lone robot uses its own name (robot_name) and its own node. A fleet gets
+    one transform per robot (namespace == robot name), all as components of ONE
+    container, FLEET_CONTAINER, which the TurtleBot2 spawns also load their
+    robot_state_publisher into: every process is a DDS participant, and this
+    host stops discovering new ones past ~95 per domain (1 + 3 per robot before
+    composing: 32 robots never finished spawning).
     """
     import yaml
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     robots_raw = LaunchConfiguration("robots").perform(context).strip()
     fleet = yaml.safe_load(robots_raw) if robots_raw else []
-    if fleet:
-        namespaces = [str(r["name"]) for r in fleet]
-    else:
-        namespaces = [LaunchConfiguration("robot_name").perform(context)]
+    if not fleet:
+        robot_name = LaunchConfiguration("robot_name").perform(context)
+        return [map_to_odom_identity(use_sim_time=use_sim_time, namespace=robot_name)]
+    sim_time = use_sim_time.perform(context).lower() in ("true", "1")
     return [
-        map_to_odom_identity(use_sim_time=use_sim_time, namespace=ns)
-        for ns in namespaces
+        ComposableNodeContainer(
+            name=FLEET_CONTAINER.strip("/"),
+            namespace="/",
+            package="rclcpp_components",
+            executable="component_container_mt",
+            output="screen",
+            composable_node_descriptions=[
+                ComposableNode(
+                    package="tf2_ros",
+                    plugin="tf2_ros::StaticTransformBroadcasterNode",
+                    name="map_to_odom",
+                    namespace=f"/{r['name']}",
+                    parameters=[{"use_sim_time": sim_time, "frame_id": "map",
+                                 "child_frame_id": "odom"}],
+                    remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+                )
+                for r in fleet
+            ],
+        )
     ]

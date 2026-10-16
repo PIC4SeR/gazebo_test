@@ -280,7 +280,9 @@ class GazeboEnvironmentHandler:
         """
         self.logger.debug("Resetting Gazebo environment (multi-robot)")
         entity_names = [entity.name for entity in entities]
-        for _ in range(60):
+        # Fleets spawn staggered, one robot a second (spawn_robot.launch.py),
+        # and slower under load: allow 60 s, or 5 s per robot.
+        for _ in range(max(120, 10 * len(entity_names))):
             if await self.check_entities_in_world(entity_names):
                 break
             await asyncio.sleep(0.5)
