@@ -31,11 +31,13 @@ macro(experiment_register_configs list_name)
   endif()
 
   set(exp_file "${ARGS_EXPERIMENT_FILE}")
+  # indexed where it is installed below, so a file generated in the build tree works too
+  get_filename_component(_exp_name "${exp_file}" NAME)
   _experiment_register_package_hook()
 
   # Append the file to the list of experiment lists for this resource index
   set(_EXPERIMENTS_${resource_index}__EXP_LISTS 
-    "${_EXPERIMENTS_${resource_index}__EXP_LISTS}${list_name};${exp_file}\n")
+    "${_EXPERIMENTS_${resource_index}__EXP_LISTS}${list_name};experiments/${_exp_name}\n")
   list(APPEND _EXPERIMENTS_PACKAGE_RESOURCE_INDICES ${resource_index})
 
   message(STATUS "experiment_register_configs(): Registered experiment config ${exp_file} for ${list_name}
