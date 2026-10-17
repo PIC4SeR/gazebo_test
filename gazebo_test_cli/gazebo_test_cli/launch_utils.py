@@ -17,7 +17,5 @@ def swarm_algorithm_name(launch_command: Optional[str]) -> Optional[str]:
     arguments = dict(
         token.split(":=", 1) for token in parts[2:] if ":=" in token
     )
-    return (
-        f"{arguments.get('profile', 'combined')}_"
-        f"{arguments.get('memory_profile', 'normalized')}"
-    )
+    # swarm_control has one law; its profile (default adaptive) names the run.
+    return arguments.get("profile", "adaptive")
