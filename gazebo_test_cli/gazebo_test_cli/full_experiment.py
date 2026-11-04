@@ -14,6 +14,7 @@ import textwrap
 import libtmux
 from libtmux.exc import LibTmuxException
 import os
+import tempfile
 import time
 import argcomplete
 from argcomplete.completers import FilesCompleter
@@ -30,6 +31,7 @@ from gazebo_test.script_utils.navigator_utils import (
     list_available_navigators,
 )
 
+from gazebo_test_cli.compose_lane import DEFAULT_IMAGE, write_lane
 from gazebo_test_cli.lane_spec import RMW_CHOICES, LaneSpec, build_lane_spec
 
 
@@ -235,11 +237,39 @@ def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--rmw",
         choices=sorted(RMW_CHOICES),
-        default="fastdds",
+        default=None,
         help=(
-            "ROS 2 middleware of every process of the lane. 'cyclone' uses "
-            "gazebo_test's config/cyclonedds.xml (raise net.core.rmem_max on the host)."
+            "ROS 2 middleware of every process of the lane (default: fastdds for tmux, "
+            "cyclone for compose). 'cyclone' uses gazebo_test's config/cyclonedds.xml "
+            "(raise net.core.rmem_max on the host)."
         ),
+    )
+
+    run_parser.add_argument(
+        "--backend",
+        choices=["tmux", "compose"],
+        default="tmux",
+        help=(
+            "tmux: run the lane now, one tmux window per process. compose: only write "
+            "the lane as a Docker Compose project into --lane-dir (docker/lane.sh runs it)."
+        ),
+    )
+    run_parser.add_argument(
+        "--lane-dir",
+        default=None,
+        help="compose backend: directory for compose.yaml, lane.json and the rendered "
+        "Nav2 params; must be inside the data root.",
+    )
+    run_parser.add_argument(
+        "--data-root",
+        default=os.environ.get("GT_DATA", ""),
+        help="compose backend: host directory mounted at the same path in every "
+        "service; results and lane dirs live inside it (default: $GT_DATA).",
+    )
+    run_parser.add_argument(
+        "--image",
+        default=os.environ.get("GT_LANE_IMAGE", DEFAULT_IMAGE),
+        help=f"compose backend: image of every service (default: $GT_LANE_IMAGE or {DEFAULT_IMAGE}).",
     )
 
     run_parser.add_argument(
@@ -307,11 +337,54 @@ def main():
 
 
 def run(args: argparse.Namespace):
-    """Run the specified experiment in a tmux session."""
+    """Run the specified experiment in a tmux session (or write it as a compose lane)."""
+    if getattr(args, "backend", "tmux") == "compose":
+        write_compose(args)
+        return
     spec = build_lane_spec(args)
     if spec is None:
         return
     run_tmux(spec, wait_after_finish=args.wait_after_finish)
+
+
+def _inside(path: Path, root: Path) -> bool:
+    path, root = path.resolve(), root.resolve()
+    return path == root or root in path.parents
+
+
+def write_compose(args: argparse.Namespace) -> Optional[Path]:
+    """``--backend compose``: write the lane into ``--lane-dir``; start nothing.
+
+    No compose.yaml is left in the lane dir when there is nothing to run (every
+    run already complete in the checkpoint store), so a runner can test for it.
+    """
+    if not args.lane_dir:
+        raise SystemExit("--backend compose needs --lane-dir")
+    if not args.data_root:
+        raise SystemExit("--backend compose needs --data-root (or $GT_DATA)")
+    data_root, lane_dir = Path(args.data_root), Path(args.lane_dir)
+    if not _inside(lane_dir, data_root):
+        raise SystemExit(f"--lane-dir {lane_dir} is not inside the data root {data_root}")
+    # Results written inside a container are lost on `compose down` unless they
+    # land on the shared data root.
+    if not args.base_path_for_results or not _inside(Path(args.base_path_for_results), data_root):
+        raise SystemExit("--backend compose needs --base-path-for-results inside the data root")
+    if args.rmw is None:
+        args.rmw = "cyclone"
+    # No gzclient in a container (sim has only an Xvfb for the lidar), no RViz.
+    args.headless, args.no_rviz = True, True
+    config_dir = lane_dir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (lane_dir / "compose.yaml").unlink(missing_ok=True)
+    # Rendered Nav2 params go to tempfile.mkdtemp(): put them on the shared
+    # data root, where the nav and manager services read them.
+    tempfile.tempdir = str(config_dir.resolve())
+    spec = build_lane_spec(args)
+    if spec is None:
+        return None
+    compose_file = write_lane(spec, lane_dir, data_root=str(data_root), image=args.image)
+    print(f"Compose lane written to {compose_file}")
+    return compose_file
 
 
 def run_tmux(spec: LaneSpec, wait_after_finish: bool = False) -> None:
