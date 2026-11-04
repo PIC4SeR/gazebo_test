@@ -1,0 +1,221 @@
+{
+ "checkpoint_external_nav": {
+  "closed": [
+   "gazebo_test_15"
+  ],
+  "environment": {
+   "GAZEBO_MASTER_URI": "http://localhost:11495",
+   "ROS_DOMAIN_ID": "15"
+  },
+  "server_commands": [
+   [
+    "wait-for",
+    "process_finished_15"
+   ]
+  ],
+  "session": "gazebo_test_15",
+  "summaries": [
+   "/results/x/outcomes.csv"
+  ],
+  "windows": [
+   [
+    "Gazebo",
+    [
+     "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 ros2 launch gazebo_sim simulation.launch.py headless:=False world_pkg_name:=gazebo_sim base_world:=social_nav.world                 agents_configuration_file:=agents_envs/social_nav.yaml config_pkg_name:=gazebo_sim                     use_lidar_gpu:=True robot_name:=jackal "
+    ]
+   ],
+   [
+    "gazebo test",
+    [
+     "ros2 launch gazebo_test experiment_manager.launch.py use_recorder:=False                use_evaluator:=False record_maps:=False                 goals_and_poses_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/goals_and_poses/social_nav.yaml                 experiment_name:=social_nav                                  algorithm_name:=unknown                                                                    checkpoint_dsn:=postgresql://u:p@db:5432/c                 resume_checkpoint:=true                 navigation_backend:=action                 watchdog_required_nodes:=/gazebo,/hunav_agent_manager,/hunav_plugin                 params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml                                                                                     task:=go_to_pose                 ; tmux wait-for -S process_finished_15"
+    ]
+   ]
+  ]
+ },
+ "fleet_navigation_launch_headless": {
+  "closed": [
+   "gazebo_test_12"
+  ],
+  "environment": {
+   "GAZEBO_MASTER_URI": "http://localhost:11465",
+   "ROS_DOMAIN_ID": "12"
+  },
+  "server_commands": [
+   [
+    "wait-for",
+    "process_finished_12"
+   ]
+  ],
+  "session": "gazebo_test_12",
+  "summaries": [
+   "/results/x/outcomes.csv"
+  ],
+  "windows": [
+   [
+    "Gazebo",
+    [
+     "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 ros2 launch gazebo_sim simulation.launch.py headless:=True world_pkg_name:=gazebo_sim base_world:=experiment_room.world                 agents_configuration_file:=agents_envs/perturbation_tb2_staggered_far/agents.yaml config_pkg_name:=swarm_experiments                     use_lidar_gpu:=True robot_name:=turtlebot2 'robots:=[{model: turtlebot2, name: turtlebot2, spawn: [0.0, -1.8, 0.0]}, {model: turtlebot2,\n    name: turtlebot2_1, spawn: [0.0, -0.6, 0.0]}, {model: turtlebot2, name: turtlebot2_2,\n    spawn: [0.0, 0.6, 0.0]}, {max_ang_speed: 1.0, model: jackal, name: jackal, spawn: [\n      0.0, 1.8, 0.0]}]'"
+    ]
+   ],
+   [
+    "Navigation",
+    [
+     "ros2 launch swarm_control hybrid.launch.py 'robots:=[{model: turtlebot2, name: turtlebot2, spawn: [0.0, -1.8, 0.0]}, {model: turtlebot2,\n    name: turtlebot2_1, spawn: [0.0, -0.6, 0.0]}, {model: turtlebot2, name: turtlebot2_2,\n    spawn: [0.0, 0.6, 0.0]}, {max_ang_speed: 1.0, model: jackal, name: jackal, spawn: [\n      0.0, 1.8, 0.0]}]' odom_topic:=ground_truth people_topic:=/people use_sim_time:=true convergence_criterion:=hold 'params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml' profile:=adaptive centroid_mode:=exogenous u_ex:=0.0,0.0"
+    ]
+   ],
+   [
+    "gazebo test",
+    [
+     "ros2 launch gazebo_test experiment_manager.launch.py use_recorder:=False                use_evaluator:=False record_maps:=False                 goals_and_poses_file:=/workspaces/hunavsim_devcontainer/install/swarm_experiments/share/swarm_experiments/goals_and_poses/perturbation_tb2_staggered_stretch.yaml                 experiment_name:=perturbation_tb2_staggered_far                                  algorithm_name:=adaptive                                                                                     resume_checkpoint:=false                 navigation_backend:=action                 watchdog_required_nodes:=/gazebo,/hunav_agent_manager,/hunav_plugin                 params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml                 timeout_duration:=120.0                                  episodes:=3                                  task:=perturbation                 ; tmux wait-for -S process_finished_12"
+    ]
+   ]
+  ]
+ },
+ "fleet_rviz": {
+  "closed": [
+   "gazebo_test_13"
+  ],
+  "environment": {
+   "GAZEBO_MASTER_URI": "http://localhost:11475",
+   "ROS_DOMAIN_ID": "13"
+  },
+  "server_commands": [
+   [
+    "wait-for",
+    "process_finished_13"
+   ]
+  ],
+  "session": "gazebo_test_13",
+  "summaries": [
+   "/results/x/outcomes.csv"
+  ],
+  "windows": [
+   [
+    "Gazebo",
+    [
+     "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 ros2 launch gazebo_sim simulation.launch.py headless:=False world_pkg_name:=gazebo_sim base_world:=experiment_room.world                 agents_configuration_file:=agents_envs/crossing/agents.yaml config_pkg_name:=gazebo_sim                     use_lidar_gpu:=True robot_name:=jackal 'robots:=[{max_ang_speed: 1.0, model: jackal, name: jackal, spawn: [0.0, -4.25, 1.57]}, {model: turtlebot2,\n    name: turtlebot2, spawn: [-0.75, -4.25, 1.57]}, {model: turtlebot2, name: turtlebot2_1,\n    spawn: [0.75, -4.25, 1.57]}]'"
+    ]
+   ],
+   [
+    "Navigation",
+    [
+     "ros2 launch swarm_control hybrid.launch.py 'robots:=[{max_ang_speed: 1.0, model: jackal, name: jackal, spawn: [0.0, -4.25, 1.57]}, {model: turtlebot2,\n    name: turtlebot2, spawn: [-0.75, -4.25, 1.57]}, {model: turtlebot2, name: turtlebot2_1,\n    spawn: [0.75, -4.25, 1.57]}]' odom_topic:=ground_truth people_topic:=/people use_sim_time:=true 'params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml' profile:=adaptive centroid_mode:=goal uc_speed:=0.3"
+    ]
+   ],
+   [
+    "RViz",
+    [
+     "ros2 launch gazebo_test rviz.launch.py 'robots:=[{max_ang_speed: 1.0, model: jackal, name: jackal, spawn: [0.0, -4.25, 1.57]}, {model: turtlebot2,\n    name: turtlebot2, spawn: [-0.75, -4.25, 1.57]}, {model: turtlebot2, name: turtlebot2_1,\n    spawn: [0.75, -4.25, 1.57]}]'"
+    ]
+   ],
+   [
+    "gazebo test",
+    [
+     "ros2 launch gazebo_test experiment_manager.launch.py use_recorder:=False                use_evaluator:=False record_maps:=False                 goals_and_poses_file:=/workspaces/hunavsim_devcontainer/install/swarm_experiments/share/swarm_experiments/goals_and_poses/formation_crossing_tb2.yaml                 experiment_name:=formation_crossing_tb2                                  algorithm_name:=adaptive                                                                                     resume_checkpoint:=false                 navigation_backend:=action                 watchdog_required_nodes:=/gazebo,/hunav_agent_manager,/hunav_plugin                 params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml                                                                                     task:=formation                 ; tmux wait-for -S process_finished_13"
+    ]
+   ]
+  ]
+ },
+ "navigator_extras_no_gpu": {
+  "closed": [
+   "gazebo_test_14"
+  ],
+  "environment": {
+   "GAZEBO_MASTER_URI": "http://localhost:11485",
+   "ROS_DOMAIN_ID": "14"
+  },
+  "server_commands": [
+   [
+    "wait-for",
+    "process_finished_14"
+   ]
+  ],
+  "session": "gazebo_test_14",
+  "summaries": [
+   "/results/x/outcomes.csv"
+  ],
+  "windows": [
+   [
+    "Gazebo",
+    [
+     "ros2 launch gazebo_sim simulation.launch.py headless:=True world_pkg_name:=gazebo_sim base_world:=social_nav.world                 agents_configuration_file:=agents_envs/social_nav.yaml config_pkg_name:=gazebo_sim                     use_lidar_gpu:=False robot_name:=jackal "
+    ]
+   ],
+   [
+    "Navigation",
+    [
+     "ros2 launch gazebo_test bringup.launch.py map:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/maps/social_nav_map.yaml params_file:=/rendered/SICNAV_config.yaml namespace:=jackal use_namespace:=true"
+    ]
+   ],
+   [
+    "RViz",
+    [
+     "ros2 launch gazebo_test rviz.launch.py namespace:=jackal"
+    ]
+   ],
+   [
+    "costmap_converter.launch",
+    [
+     "ros2 launch nav2_pybind_sicnav_controller costmap_converter.launch.py 'namespace:=jackal'"
+    ]
+   ],
+   [
+    "gazebo test",
+    [
+     "ros2 launch gazebo_test experiment_manager.launch.py use_recorder:=False                use_evaluator:=False record_maps:=False                 goals_and_poses_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/goals_and_poses/social_nav.yaml                 experiment_name:=social_nav                                  algorithm_name:=SICNAV                                  wait_before_start:=3                 repetitions:=2                                  resume_checkpoint:=false                 navigation_backend:=nav2                                  params_file:=/rendered/SICNAV_config.yaml                                                                                     task:=go_to_pose                 ; tmux wait-for -S process_finished_14"
+    ]
+   ]
+  ]
+ },
+ "single_robot_rviz_eval_bag": {
+  "closed": [
+   "gazebo_test_11"
+  ],
+  "environment": {
+   "GAZEBO_MASTER_URI": "http://localhost:11455",
+   "ROS_DOMAIN_ID": "11"
+  },
+  "server_commands": [
+   [
+    "wait-for",
+    "process_finished_11"
+   ]
+  ],
+  "session": "gazebo_test_11",
+  "summaries": [
+   "/results/x/outcomes.csv"
+  ],
+  "windows": [
+   [
+    "Gazebo",
+    [
+     "__GLX_VENDOR_LIBRARY_NAME=nvidia __NV_PRIME_RENDER_OFFLOAD=1 ros2 launch gazebo_sim simulation.launch.py headless:=False world_pkg_name:=gazebo_sim base_world:=social_env_test.world                 agents_configuration_file:=agents_envs/social_env_test.yaml config_pkg_name:=gazebo_sim                     use_lidar_gpu:=True robot_name:=jackal "
+    ]
+   ],
+   [
+    "Navigation",
+    [
+     "ros2 launch gazebo_test bringup.launch.py map:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/maps/social_env_test_map.yaml params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml namespace:=jackal use_namespace:=true"
+    ]
+   ],
+   [
+    "RViz",
+    [
+     "ros2 launch gazebo_test rviz.launch.py namespace:=jackal"
+    ]
+   ],
+   [
+    "Hunav Eval",
+    [
+     "ros2 launch hunav_evaluator hunav_evaluator_launch.py                 metrics_file:=/workspaces/hunavsim_ws/install/hunav_evaluator/share/hunav_evaluator/config/metrics.yaml"
+    ]
+   ],
+   [
+    "gazebo test",
+    [
+     "ros2 launch gazebo_test experiment_manager.launch.py use_recorder:=True                use_evaluator:=True record_maps:=False                 goals_and_poses_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/goals_and_poses/social_env_test.yaml                 experiment_name:=social_env_test                                  algorithm_name:=unknown                                                                                     resume_checkpoint:=false                 navigation_backend:=nav2                                  params_file:=/workspaces/hunavsim_devcontainer/install/gazebo_experiments/share/gazebo_experiments/config/nav2_params.yaml                                                                                     task:=go_to_pose                 ; tmux wait-for -S process_finished_11"
+    ]
+   ]
+  ]
+ }
+}
