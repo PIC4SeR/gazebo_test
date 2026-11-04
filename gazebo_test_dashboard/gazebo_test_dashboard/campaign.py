@@ -400,7 +400,7 @@ class Campaign:
                 if self.last_start is not None and now - self.last_start < self.plan.lanes.stagger_s:
                     wait = self.plan.lanes.stagger_s - (now - self.last_start)
                     raise PermissionError(f"another lane started {now - self.last_start:.0f} s ago: "
-                                          f"wait {wait:.0f} s (stagger_s, shared world file)")
+                                          f"wait {wait:.0f} s (stagger_s)")
                 self._start(lane, row, now)
             elif action in ("up", "down"):
                 queue = sorted(self.rows, key=lambda r: r["order"])

@@ -39,7 +39,7 @@ checkpoint_dsn: ""                            # "" = --disable-checkpoint
 common_args: [--headless, --hunav-eval, --bag-record]
 lanes:
   domains: [11, 12]          # one lane per ROS domain (tmux session gazebo_test_<d>)
-  stagger_s: 45              # between two lane starts
+  stagger_s: 5               # between two lane starts
   batch_timeout_s: 5400      # wall clock per launch
   stall_timeout_s: 900       # no new outcome row for this long
   sim_stall_s: 300           # Gazebo sim time stuck for this long
@@ -68,8 +68,8 @@ experiments:
 ## How a batch runs
 
 1. A free, enabled lane takes the first pending batch, at least `stagger_s` after
-   the previous start on any lane (lanes share `generatedWorld.world`; starting
-   two scenes together can load the wrong world).
+   the previous start on any lane. Each lane writes its HuNav world into its own
+   `/tmp/gazebo_test_<lane>/worlds/`, so the stagger only spreads the start-up load.
 2. It runs `ros2 gazeboexp run <experiment> … --ros-domain-id <lane>`; the CLI
    builds the tmux session `gazebo_test_<lane>`. The launch's output is in the
    batch log; the page also shows the experiment manager's tmux window.

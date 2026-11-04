@@ -88,7 +88,7 @@ def test_plan_expands_and_validates(tmp_path):
         make_plan(tmp_path, common_args=["--wait-after-finish"])
     warned = plan_warnings(make_plan(tmp_path, lanes={"domains": [0, 5], "stagger_s": 5}),
                            known_experiments=["other"], known_navigators=["DWB"])
-    assert len(warned) == 4  # domain 0, short stagger, unknown experiment, MPPI unknown
+    assert len(warned) == 3  # domain 0, unknown experiment, MPPI unknown
 
 
 def test_checkpoint_namespace_matches_the_manager():

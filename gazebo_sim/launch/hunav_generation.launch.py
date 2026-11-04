@@ -13,9 +13,13 @@ from launch.event_handlers import OnProcessIO, OnProcessStart
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
 from gazebo_sim.launch.launch_utils import (
+    GENERATED_WORLD,
+    lane_world_dir,
     path_to_file_in_pkg,
     parse_launch_config_value,
 )
+import shutil
+from pathlib import Path
 
 from dataclasses import dataclass
 from launch_pal.arg_utils import LaunchArgumentsBase
@@ -81,6 +85,15 @@ def _launch_hunav_world_generator(context, *args, **kwargs):
         pkg_name=LaunchConfiguration("world_pkg_name"),
         paths=["worlds", LaunchConfiguration("base_world")],
     ).perform(context)
+    # The generator writes generatedWorld.world next to the world it reads: give
+    # it a lane-private copy, and drop a stale output so a failed generation
+    # cannot silently load the previous run's world.
+    lane_dir = lane_world_dir()
+    (lane_dir / GENERATED_WORLD).unlink(missing_ok=True)
+    lane_copy = lane_dir / Path(world_file).name
+    shutil.copyfile(world_file, lane_copy)
+    world_file = str(lane_copy)
+    LogInfo(msg="HuNav base world (lane copy): " + world_file).execute(context)
 
     # In fleet mode HuNav tracks every robot socially: one <robot_name> SDF
     # element per fleet entry (the namespace == Gazebo entity name). Otherwise

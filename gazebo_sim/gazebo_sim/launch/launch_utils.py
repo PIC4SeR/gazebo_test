@@ -1,8 +1,30 @@
+import os
+from pathlib import Path
 from typing import List, Optional, Union
 from launch.substitutions import PathJoinSubstitution
 from launch import SomeSubstitutionsType
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
+
+
+GENERATED_WORLD = "generatedWorld.world"
+
+
+def lane_world_dir() -> Path:
+    """Private directory for this lane's world files.
+
+    HuNav writes ``generatedWorld.world`` next to the base world it reads, so a
+    base world inside the package share was one file shared by every lane: two
+    lanes starting together could load each other's world. Each lane copies its
+    base world here first. ``GAZEBO_TEST_LANE_DIR`` overrides the lane root;
+    otherwise it is ``/tmp/gazebo_test_<ROS_DOMAIN_ID>``.
+    """
+    root = os.environ.get("GAZEBO_TEST_LANE_DIR", "").strip() or (
+        f"/tmp/gazebo_test_{os.environ.get('ROS_DOMAIN_ID', '0').strip() or '0'}"
+    )
+    path = Path(root) / "worlds"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def path_to_file_in_pkg(

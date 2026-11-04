@@ -49,7 +49,7 @@ class Experiment:
 @dataclass
 class Lanes:
     domains: List[int]
-    stagger_s: float = 45.0  # between two lane starts: the shared generatedWorld.world race
+    stagger_s: float = 5.0  # between two lane starts: spreads the start-up CPU spike
     batch_timeout_s: float = 5400.0  # wall clock per launch
     stall_timeout_s: float = 900.0  # no new outcome row for this long
     sim_stall_s: float = 300.0  # Gazebo sim time not advancing for this long
@@ -171,9 +171,6 @@ def plan_warnings(plan: Plan, known_experiments: Optional[List[str]] = None,
     if 0 in plan.lanes.domains:
         warnings.append("lane domain 0 is the one the Optuna driver tears down "
                         "(tmux session gazebo_test_0); prefer other domains")
-    if len(plan.lanes.domains) > 1 and plan.lanes.stagger_s < 30:
-        warnings.append(f"lanes.stagger_s = {plan.lanes.stagger_s:g}: lanes starting within "
-                        "the same seconds can load each other's world (keep >= 30 s)")
     if known_experiments is not None:
         unknown = [e.name for e in plan.experiments if e.name not in known_experiments]
         if unknown:

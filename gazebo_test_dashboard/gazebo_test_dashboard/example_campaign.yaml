@@ -20,7 +20,7 @@ common_args: [--headless, --hunav-eval, --bag-record]
 
 lanes:
   domains: [11]                # one lane per ROS domain; add domains for parallel lanes
-  stagger_s: 45                # between two lane starts (lanes share generatedWorld.world)
+  stagger_s: 5                 # between two lane starts (spreads the start-up CPU spike)
   batch_timeout_s: 5400        # wall clock per launch, then torn down
   stall_timeout_s: 900         # no new outcome row for this long (includes start-up)
   sim_stall_s: 300             # Gazebo sim time not advancing for this long

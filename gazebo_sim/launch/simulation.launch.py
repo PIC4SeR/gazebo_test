@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -19,7 +18,11 @@ from dataclasses import dataclass
 from gazebo_sim.launch_arguments.common import GazeboCommonArgs
 from gazebo_sim.launch_arguments.hunav import HunavArgs
 from gazebo_sim.launch_arguments.robot import RobotArgs
-from gazebo_sim.launch.launch_utils import map_to_odom_identity
+from gazebo_sim.launch.launch_utils import (
+    GENERATED_WORLD,
+    lane_world_dir,
+    map_to_odom_identity,
+)
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from typing import List
@@ -68,10 +71,9 @@ def launch_gazebo_world(context, *args, **kwargs):
     base_world = LaunchConfiguration("base_world").perform(context)
     if UnlessCondition(LaunchConfiguration("start_hunav")).evaluate(context):
         world_name = base_world
-    elif Path(base_world).is_absolute():
-        world_name = str(Path(base_world).with_name("generatedWorld.world"))
     else:
-        world_name = "generatedWorld.world"
+        # Written by hunav_generation.launch.py into this lane's private dir.
+        world_name = str(lane_world_dir() / GENERATED_WORLD)
     LogInfo(msg="Launching Gazebo world: " + world_name).execute(context)
     return [
         include_scoped_launch_py_description(
