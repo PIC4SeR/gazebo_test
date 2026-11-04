@@ -30,7 +30,7 @@ from gazebo_test.script_utils.navigator_utils import (
     list_available_navigators,
 )
 
-from gazebo_test_cli.lane_spec import LaneSpec, build_lane_spec
+from gazebo_test_cli.lane_spec import RMW_CHOICES, LaneSpec, build_lane_spec
 
 
 def _print_experiments():
@@ -232,6 +232,16 @@ def build_parser(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         action="store_true",
         help="Do not start a navigation launch; use a navigation stack that is already running.",
     )
+    run_parser.add_argument(
+        "--rmw",
+        choices=sorted(RMW_CHOICES),
+        default="fastdds",
+        help=(
+            "ROS 2 middleware of every process of the lane. 'cyclone' uses "
+            "gazebo_test's config/cyclonedds.xml (raise net.core.rmem_max on the host)."
+        ),
+    )
+
     run_parser.add_argument(
         "--navigation-backend",
         choices=["nav2", "action", "navigate_to_pose", "nav2_action"],

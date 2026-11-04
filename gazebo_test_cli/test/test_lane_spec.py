@@ -100,3 +100,15 @@ def test_tmux_lanes_match_golden(monkeypatch):
     assert sorted(records) == sorted(golden)
     for name in CASES:
         assert records[name] == golden[name], name
+
+
+def test_rmw_cyclone_only_changes_the_environment(monkeypatch):
+    argv = CASES["single_robot_rviz_eval_bag"]
+    default = run_case(monkeypatch, argv)
+    cyclone = run_case(monkeypatch, [*argv, "--rmw", "cyclone"])
+    assert cyclone["windows"] == default["windows"]
+    extra = {k: v for k, v in cyclone["environment"].items() if k not in default["environment"]}
+    assert extra["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
+    config = extra["CYCLONEDDS_URI"].removeprefix("file://")
+    assert config.endswith("gazebo_test/config/cyclonedds.xml") and Path(config).is_file()
+    assert sorted(extra) == ["CYCLONEDDS_URI", "RMW_IMPLEMENTATION"]

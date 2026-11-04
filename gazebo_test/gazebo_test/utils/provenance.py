@@ -5,6 +5,7 @@ Writes, into the results base directory:
   * a verbatim copy of the navigation config file actually used (the YAML
     rendered from the navigator profile templates), and
   * the git commit (and dirty flag) of the one controller package employed,
+  * the ROS 2 middleware (RMW, Cyclone config, domain) the lane ran on,
 
 so we can be sure every run in a group used the same parameters and the same
 controller implementation.
@@ -146,6 +147,22 @@ def collect_controller_git(controller: Dict[str, object], src: Optional[Path]) -
     }
 
 
+def middleware_info() -> Dict[str, object]:
+    """The ROS 2 middleware of this process (every process of a lane shares it:
+    the CLI sets it for the whole session or compose project)."""
+    try:
+        from rclpy.utilities import get_rmw_implementation_identifier
+
+        rmw = get_rmw_implementation_identifier()
+    except Exception:  # noqa: BLE001 - rclpy missing or not loadable
+        rmw = os.environ.get("RMW_IMPLEMENTATION") or None
+    return {
+        "rmw_implementation": rmw,
+        "cyclonedds_uri": os.environ.get("CYCLONEDDS_URI") or None,
+        "ros_domain_id": os.environ.get("ROS_DOMAIN_ID") or None,
+    }
+
+
 def write_experiment_provenance(
     *,
     base_path: Path,
@@ -175,6 +192,7 @@ def write_experiment_provenance(
             "algorithm_name": algorithm_name,
             "experiment_identifier": experiment_identifier,
         }
+        manifest["middleware"] = middleware_info()
         if extra:
             manifest.update(extra)
 

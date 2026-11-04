@@ -207,6 +207,23 @@ def _normalize_navigation_backend(navigation_backend: str) -> str:
     return aliases.get(normalized, normalized)
 
 
+# --rmw value -> RMW_IMPLEMENTATION. fastdds is the ROS 2 Humble default and
+# sets nothing, so a lane without --rmw runs exactly as before.
+RMW_CHOICES = {"fastdds": "", "cyclone": "rmw_cyclonedds_cpp"}
+
+
+def rmw_env(rmw: str) -> Dict[str, str]:
+    """The environment that selects ``rmw`` for every process of a lane."""
+    implementation = RMW_CHOICES[rmw]
+    if not implementation:
+        return {}
+    env = {"RMW_IMPLEMENTATION": implementation}
+    if rmw == "cyclone":
+        config = Path(get_package_share_directory("gazebo_test")) / "config" / "cyclonedds.xml"
+        env["CYCLONEDDS_URI"] = f"file://{config}"
+    return env
+
+
 @dataclass
 class LaneWindow:
     """One process of a lane: a tmux window, or a compose service."""
@@ -544,7 +561,11 @@ def build_lane_spec(args: argparse.Namespace) -> Optional[LaneSpec]:
     return LaneSpec(
         domain=ros_domain_id,
         gazebo_uri=gazebo_uri,
-        env={"ROS_DOMAIN_ID": str(ros_domain_id), "GAZEBO_MASTER_URI": gazebo_uri},
+        env={
+            "ROS_DOMAIN_ID": str(ros_domain_id),
+            "GAZEBO_MASTER_URI": gazebo_uri,
+            **rmw_env(getattr(args, "rmw", "fastdds") or "fastdds"),
+        },
         windows=windows,
         manager=manager,
         experiment=experiment_identifier,

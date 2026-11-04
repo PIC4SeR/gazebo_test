@@ -19,6 +19,7 @@
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
   <depend>cv_bridge</depend>
   <depend>launch_pal</depend>
   <depend>tf_transformations</depend>

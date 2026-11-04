@@ -42,6 +42,7 @@ install(DIRECTORY
   behavior_trees
   rviz
   cmake
+  config
   DESTINATION share/${PROJECT_NAME}/
 )
 
@@ -57,6 +58,7 @@ install(PROGRAMS
   scripts/experiment_manager
   scripts/environment_camera
   scripts/annotate_snapshot
+  scripts/clock_ready
   DESTINATION lib/${PROJECT_NAME}
 )
 
