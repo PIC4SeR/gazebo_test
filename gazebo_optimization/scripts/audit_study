@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Audit an Optuna study against the RAW outcomes CSVs it was scored from.
+
+The DB's recorded constraint rates are only as good as the ``failure_values``
+lists that were in effect when the study ran. When a real failure string is
+missing from every constraint, trials are labelled feasible while colliding on
+every run -- and because objectives average over successful runs only, the
+unlisted failure is doubly invisible. That happened once already
+(``Failure: Collision with robot`` absent from objectives_swarm*.yaml), so never
+trust a study's own feasibility labels: recount from the CSVs.
+
+This tool recounts every failure string per trial, flags disagreements with the
+DB, and re-derives the feasible Pareto front from the honest labels. It also
+reports per-parameter correlation with the honest collision rate, which is how
+the ``robot.b`` threshold in perturbation_tb2 was found.
+
+Usage:
+  ros2 run gazebo_optimization audit_study \\
+    --db optuna_studies/swarm/swarm_perturbation.db \\
+    --results-root optuna_studies/swarm/no_checkpoint \\
+    --prefix swarm_perturbation_t --exclude gaussian \\
+    --params b A_soc k_v k_ang k_ang_damp max_ang_accel k_target sigma_front0
+
+``--prefix`` is the per-trial results directory prefix (``<study>_t``), and
+``--exclude`` drops sibling studies whose names extend the same prefix.
+"""
+
+import argparse
+import collections
+import csv
+import glob
+import os
+import re
+import sqlite3
+import statistics as st
+
+# Anything not matched here is treated as a failure and reported, so a NEW
+# failure string introduced by the evaluator shows up instead of hiding.
+SUCCESS_PREFIX = "Success"
+COLLISION_STRINGS = {
+    "Failure: Collision with robot",
+    "Failure: Collision with agent",
+    "Failure: Collision with environment",
+}
+
+
+def load_trials(db):
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    trials = {
+        r["trial_id"]: {"n": r["number"], "state": r["state"], "v": {}, "p": {}, "ua": {}}
+        for r in con.execute("select trial_id, number, state from trials")
+    }
+    for r in con.execute("select trial_id, objective, value from trial_values"):
+        trials[r["trial_id"]]["v"][r["objective"]] = r["value"]
+    for r in con.execute("select trial_id, param_name, param_value from trial_params"):
+        trials[r["trial_id"]]["p"][r["param_name"].split(".")[-1]] = r["param_value"]
+    for r in con.execute("select trial_id, key, value_json from trial_user_attributes"):
+        try:
+            trials[r["trial_id"]]["ua"][r["key"]] = float(r["value_json"])
+        except ValueError:
+            pass
+    return [t for t in sorted(trials.values(), key=lambda t: t["n"])]
+
+
+def recount(results_root, prefix, number, exclude):
+    """Per-trial failure-string counts + run sequence straight from the outcomes CSV."""
+    dirs = [
+        d for d in glob.glob(os.path.join(results_root, f"{prefix}{number}_*"))
+        if not (exclude and exclude in os.path.basename(d))
+        and re.fullmatch(re.escape(prefix) + r"\d+_\w+", os.path.basename(d))
+    ]
+    if not dirs:
+        return None
+    files = glob.glob(os.path.join(dirs[0], "*", "*_outcomes.csv"))
+    if not files:
+        return None
+    with open(files[0]) as fh:
+        rows = list(csv.DictReader(fh))
+    counts = collections.Counter(str(r["result"]) for r in rows)
+    return counts, run_sequence(rows)
+
+
+def run_sequence(rows):
+    """Per-run outcome codes in execution order (episode-major, then run_id)."""
+    episodes = sorted({r["experiment_tag"] for r in rows})
+    last_run = max(int(r["run_id"]) for r in rows)
+    seq = []
+    for episode in episodes:
+        for run in range(1, last_run + 1):
+            results = {r["result"] for r in rows
+                       if r["experiment_tag"] == episode and int(r["run_id"]) == run}
+            if not results:
+                continue
+            if any("environment" in x for x in results):
+                seq.append("E")
+            elif any("with robot" in x for x in results):
+                seq.append("R")
+            elif any("with agent" in x for x in results):
+                seq.append("H")
+            elif any("Timeout" in x for x in results):
+                seq.append("T")
+            elif any("drifted" in x for x in results):
+                seq.append("D")
+            else:
+                seq.append("." if all(x.startswith(SUCCESS_PREFIX) for x in results) else "x")
+    return seq
+
+
+def cascade_onset(seq, min_tail=4):
+    """Index where an unbroken all-environment tail runs to the end of the trial.
+
+    The sim does not always recover from a disrupted run: after one timeout or
+    collision the world can stay broken, and every REMAINING run then reports
+    "Collision with environment" for every robot at once. That is an
+    infrastructure artifact, not controller behaviour, and it inflates the
+    recorded collision rate -- enough to mark a collision-free config infeasible
+    against a hard max_rate of 0.0 (observed on the b sweep, trial 0: recorded
+    0.400, true pre-cascade 0.000 over 18 runs). Rates before the onset are
+    trustworthy; everything from it onward must be discarded, not interpreted.
+    """
+    n = len(seq)
+    for i in range(n):
+        if seq[i] == "E" and n - i >= min_tail and all(c == "E" for c in seq[i:]):
+            return i
+    return None
+
+
+def pearson(xs, ys):
+    if len(xs) < 3:
+        return float("nan")
+    mx, my = st.mean(xs), st.mean(ys)
+    num = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
+    den = (sum((a - mx) ** 2 for a in xs) * sum((b - my) ** 2 for b in ys)) ** 0.5
+    return num / den if den else 0.0
+
+
+def pareto(trials, penalty):
+    """Non-dominated set on all objectives (all minimized)."""
+    def dominates(a, b):
+        va, vb = a["v"], b["v"]
+        return (all(va[k] <= vb[k] for k in va)
+                and any(va[k] < vb[k] for k in va))
+    scored = [t for t in trials if t["v"] and max(t["v"].values()) < penalty]
+    return sorted(
+        [a for a in scored if not any(b is not a and dominates(b, a) for b in scored)],
+        key=lambda t: t["v"].get(0, 0.0),
+    )
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", required=True)
+    ap.add_argument("--results-root", required=True,
+                    help="Directory holding the per-trial results dirs.")
+    ap.add_argument("--prefix", required=True,
+                    help="Per-trial results dir prefix, e.g. 'swarm_perturbation_t'.")
+    ap.add_argument("--exclude", default=None,
+                    help="Drop dirs whose basename contains this (sibling studies "
+                         "that extend the same prefix).")
+    ap.add_argument("--params", nargs="*", default=[],
+                    help="Parameter short names to correlate against the honest "
+                         "collision rate (default: every param in the study).")
+    ap.add_argument("--penalty", type=float, default=1e6,
+                    help="Objective sentinel written for no-success trials.")
+    args = ap.parse_args()
+
+    trials = load_trials(args.db)
+    done = [t for t in trials if t["state"] == "COMPLETE"]
+    missing, mismatched = [], []
+
+    for t in done:
+        got = recount(args.results_root, args.prefix, t["n"], args.exclude)
+        if got is None:
+            missing.append(t["n"])
+            t["honest"] = None
+            continue
+        counts, seq = got
+        total = sum(counts.values())
+        t["counts"] = counts
+        t["total"] = total
+        t["seq"] = seq
+        t["honest"] = sum(v for k, v in counts.items() if k in COLLISION_STRINGS) / total
+        t["success"] = sum(v for k, v in counts.items()
+                           if k.startswith(SUCCESS_PREFIX)) / total
+        # Per-run rate before any cascade -- the only trustworthy collision figure.
+        onset = cascade_onset(seq)
+        t["cascade"] = onset
+        valid = seq[:onset] if onset is not None else seq
+        t["clean_rate"] = (sum(1 for c in valid if c in "ERH") / len(valid)
+                           if valid else float("nan"))
+        db_rate = t["ua"].get("collision_rate")
+        # Rates are per-run; CSVs are per-robot-row, so only the zero/non-zero
+        # disagreement is meaningful -- that is exactly the bug class we hunt.
+        if db_rate is not None and db_rate == 0.0 and t["honest"] > 0:
+            mismatched.append((t["n"], t["honest"]))
+
+    audited = [t for t in done if t.get("honest") is not None]
+    print(f"study: {args.db}")
+    print(f"trials: {len(trials)} total, {len(done)} complete, {len(audited)} audited"
+          + (f", {len(missing)} missing CSVs: {missing}" if missing else ""))
+
+    strings = collections.Counter()
+    for t in audited:
+        strings.update(t["counts"])
+    print("\nresult strings across the study (every one must be in a constraint "
+          "or an objective is being averaged over a silent failure):")
+    for k, v in strings.most_common():
+        mark = ("" if k.startswith(SUCCESS_PREFIX) or k in COLLISION_STRINGS
+                else "  <== non-collision failure: confirm a constraint covers it")
+        print(f"  {v:7d}  {k}{mark}")
+
+    if mismatched:
+        print(f"\n*** {len(mismatched)} trials recorded collision_rate=0.0 but DO "
+              f"collide in their CSVs -- this study's feasibility labels are WRONG:")
+        for n, rate in mismatched:
+            print(f"      t{n}: {rate:.1%} of rows are collisions")
+    else:
+        print("\nno DB/CSV disagreement: recorded collision labels are trustworthy.")
+
+    cascaded = [t for t in audited if t["cascade"] is not None]
+    if cascaded:
+        print(f"\n*** {len(cascaded)} trials have a CASCADE tail (sim never recovered "
+              f"from a disrupted run; every later run reports an environment\n"
+              f"    collision for all robots at once). Rates from the onset onward are "
+              f"artifact -- discard, do not interpret:")
+        for t in cascaded:
+            print(f"      t{t['n']}: {''.join(t['seq'])}")
+            print(f"           onset at run {t['cascade']}, recorded "
+                  f"{t['ua'].get('collision_rate', float('nan')):.3f} -> "
+                  f"pre-cascade {t['clean_rate']:.3f} over {t['cascade']} valid runs"
+                  + ("   <== a collision-FREE config recorded as infeasible"
+                     if t["clean_rate"] == 0.0 else ""))
+        print("      (legend: . ok  R robot-robot  E environment  H human  "
+              "T timeout  D drift  x other)")
+
+    honest_clean = [t for t in audited if t["honest"] == 0.0]
+    db_clean = [t for t in audited if t["ua"].get("collision_rate") == 0.0]
+    cascade_clean = [t for t in audited if t["clean_rate"] == 0.0]
+    print(f"\ncollision-free: {len(honest_clean)}/{len(audited)} honest "
+          f"vs {len(db_clean)}/{len(audited)} as recorded"
+          f"  |  {len(cascade_clean)}/{len(audited)} once cascade tails are dropped")
+
+    print("\nhonest-feasible Pareto front:")
+    for t in pareto(honest_clean, args.penalty):
+        objs = " ".join(f"obj{k}={t['v'][k]:.4f}" for k in sorted(t["v"]))
+        print(f"  t{t['n']:<4} {objs}  sum={sum(t['v'].values()):.4f} "
+              f"success={t.get('success', float('nan')):.2f}")
+
+    names = args.params or sorted({k for t in audited for k in t["p"]})
+    rates = [t["honest"] for t in audited]
+    print("\nPearson r(param, honest collision rate)  [|r|>0.5 = dominant driver]:")
+    for name in sorted(names, key=lambda n: -abs(
+            pearson([t["p"][n] for t in audited if n in t["p"]],
+                    [t["honest"] for t in audited if n in t["p"]]))):
+        xs = [t["p"][name] for t in audited if name in t["p"]]
+        ys = [t["honest"] for t in audited if name in t["p"]]
+        print(f"  {name:>16}: {pearson(xs, ys):+.3f}")
+
+    if names and rates:
+        top = max(names, key=lambda n: abs(pearson(
+            [t["p"][n] for t in audited if n in t["p"]],
+            [t["honest"] for t in audited if n in t["p"]])))
+        vals = sorted(t["p"][top] for t in audited if top in t["p"])
+        if len(vals) >= 8:
+            print(f"\n'{top}' vs collision rate, quintiles:")
+            step = len(vals) // 5 or 1
+            edges = [vals[i] for i in range(0, len(vals), step)][:5] + [vals[-1] + 1e-9]
+            for lo, hi in zip(edges, edges[1:]):
+                grp = [t for t in audited if top in t["p"] and lo <= t["p"][top] < hi]
+                if not grp:
+                    continue
+                clean = sum(1 for t in grp if t["honest"] == 0.0)
+                print(f"  {top} in [{lo:.3f}, {hi:.3f}): n={len(grp):3d}  "
+                      f"clean={clean:3d} ({100 * clean / len(grp):3.0f}%)  "
+                      f"mean rate={st.mean(t['honest'] for t in grp):.3f}")
+
+
+if __name__ == "__main__":
+    main()

@@ -30,8 +30,8 @@ controller_server → ros__parameters → FollowPath → optimizer → weights
 
 and only calls `trial.suggest_float(key, min, max)`. Any key that is not a float living
 in that exact subtree is silently dropped (`Warning: <key> not found`). That subtree
-exists **only for the MPC family** (`mpc_base` / `mpc_sfm_motion_model` /
-`mpc_enlarged_state`, and the legacy `social_mpc` `FollowPath`). For MPPI / DWB / DWA /
+exists **only for the MPC family** ( `sfm_nmpc` /
+`coop_nmpc`, `FollowPath`). For MPPI / DWB / DWA /
 ORCA / SFM / SICNav / CrowdNav the weights live elsewhere, so the driver must be
 generalized first (see §4).
 
@@ -195,6 +195,19 @@ need for constraint handling (§7).
 ---
 
 ## 6. Per-scenario vs. across-all-experiments
+
+### Simple grid search
+
+Put explicit `values` in `config/grid_search.yaml`, then run:
+
+```bash
+ros2 run gazebo_optimization optuna_optimization --sampler grid \
+  --search-space $(ros2 pkg prefix --share gazebo_optimization)/config/grid_search.yaml \
+  --scenario social_nav --navigator MPC_enlarged_state
+```
+
+Every combination runs unless `--n-trials` limits it. The total is the product of the
+value counts, so keep the grid small.
 
 A `gazebo_test` "scenario" (`social_nav`, `social_env_test`, `social_nav_obstacles`,
 `social_scenarios`, …; see `experiments.yaml`) is a distinct world + agents + goals.
@@ -391,5 +404,10 @@ hours to days of sim time. This budget, not Optuna, is the real ceiling — whic
 - Runner: `ros2 gazeboexp run <scenario> --nav-params <yaml> --hunav-eval --headless --no-rviz --algorithm-name <id> --base-path-for-results <root>`
 - Results truth: `<root>/<ns>/<algorithm>/<scenario>/<algorithm>_outcomes.csv`
 - Optuna driver: `gazebo_optimization/scripts/optuna_optimization`
-</content>
-</invoke>
+
+---
+
+## Tuning the swarm_control controller
+
+Moved to `swarm_experiments/README.md` in the swarm_control repo, together with the
+swarm search spaces and objectives (`swarm_experiments/config/optuna/`).

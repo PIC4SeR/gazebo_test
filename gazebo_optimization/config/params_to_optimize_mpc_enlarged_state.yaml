@@ -1,4 +1,4 @@
-# Search space for the MPC_enlarged_state navigator (plugin: mpc_enlarged_state::MPCEnlargedState)
+# Search space for the MPC_enlarged_state navigator (plugin: mpc_enlarged_state::NMPC)
 #
 # Format follows §4 of docs/optuna_parameter_tuning.md: each entry is a
 # FULLY-QUALIFIED dotted path into the rendered nav2_params.yaml, with an

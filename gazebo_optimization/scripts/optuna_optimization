@@ -21,6 +21,7 @@ Generalized per docs/optuna_parameter_tuning.md §4 + §7:
 import argparse
 import copy
 import glob
+import math
 import os
 import uuid
 
@@ -46,7 +47,8 @@ EPS = 1.0e-6
 # which needs a `spin` recovery server the gazebo_test bringup doesn't provide ->
 # "Action server spin not available" -> the nav stack aborts. Match the runner.
 DEFAULT_RENDER_VARS = {
-    "odom_topic": "jackal/ground_truth",
+    "odom_topic": "ground_truth",
+    "people_topic": "detected_people",
     "bt_xml_pkg": "gazebo_test",
 }
 
@@ -83,6 +85,17 @@ def load_search_space(file_path):
         {"path": f"{base}.{key}", "type": "float", "min": v["min"], "max": v["max"]}
         for key, v in weights.items()
     ]
+
+
+def grid_values(search_space):
+    """Return Optuna's grid mapping from specs with explicit ``values``."""
+    missing = [param_name(spec) for spec in search_space if not spec.get("values")]
+    if missing:
+        raise ValueError(
+            "Grid search requires a non-empty 'values' list for: "
+            + ", ".join(missing)
+        )
+    return {param_name(spec): spec["values"] for spec in search_space}
 
 
 def load_objectives(file_path):
@@ -125,12 +138,20 @@ def load_objectives(file_path):
 def set_by_path(d, dotted, value):
     keys = dotted.split(".")
     for k in keys[:-1]:
-        d = d.setdefault(k, {})
-    d[keys[-1]] = value
+        d = d[int(k)] if isinstance(d, list) else d.setdefault(k, {})
+    if isinstance(d, list):
+        d[int(keys[-1])] = value
+    else:
+        d[keys[-1]] = value
+
+
+def param_name(spec):
+    """Optuna parameter name; ``name`` supports one value mapped to many paths."""
+    return spec.get("name", spec.get("path"))
 
 
 def suggest(trial, spec):
-    name = spec["path"]
+    name = param_name(spec)
     ptype = spec.get("type", "float")
     log = spec.get("log", False)
     if ptype == "int":
@@ -143,7 +164,9 @@ def suggest(trial, spec):
 def build_params(trial, base_yaml, search_space):
     params = copy.deepcopy(base_yaml)
     for spec in search_space:
-        set_by_path(params, spec["path"], suggest(trial, spec))
+        value = suggest(trial, spec)
+        for path in spec.get("paths", [spec.get("path")]):
+            set_by_path(params, path, value)
     return params
 
 
@@ -266,8 +289,12 @@ def run_benchmark(args, params, algorithm_name):
         "--algorithm-name", algorithm_name,
         "--nav-params", params_path,
     ]
+    if args.bag_record:
+        cmd += ["--bag-record"]
     if args.exp_config_pkg:
         cmd += ["--exp-config-pkg", args.exp_config_pkg]
+    if args.repetitions is not None:
+        cmd += ["--repetitions", str(args.repetitions)]
     print("Running:", " ".join(cmd))
     try:
         subprocess.run(cmd, check=True, timeout=args.trial_timeout)
@@ -290,10 +317,17 @@ def cleanup_sim():
     # NOTE: patterns must not match this driver's own command line. Bare 'hunav'
     # is fatal here because the workspace path (…/hunavsim_devcontainer/…) contains
     # it, so `pkill -9 -f hunav` would kill the study itself. Use precise tokens;
-    # `tmux kill-server` already SIGHUPs the hunav-eval pane.
-    for c in ("tmux kill-server",
-              "pkill -9 -f 'gzserver|gzclient|component_container|controller_server|hunav_evaluator'"):
-        subprocess.run(c, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["tmux", "kill-session", "-t", "gazebo_test_0"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["pkill", "-9", "-f",
+         "gzserver|gzclient|component_container|controller_server|hunav_evaluator"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def run_experiment(args, params, algorithm_name, objectives, constraints):
@@ -392,7 +426,7 @@ def parse_args():
     p.add_argument("--render-var", action="append", metavar="KEY=VALUE",
                    help="Override a nav2_profiles render variable when rendering "
                         "the navigator (repeatable). Defaults: "
-                        "odom_topic=jackal/ground_truth, bt_xml_pkg=gazebo_test.")
+                        "odom_topic=ground_truth, people_topic=detected_people, bt_xml_pkg=gazebo_test.")
     p.add_argument("--base-params", default=os.path.join(CONFIG_DIR, "nav2_params.yaml"))
     p.add_argument("--search-space", default=os.path.join(CONFIG_DIR, "params_to_optimize.yaml"))
     p.add_argument("--objectives", default=os.path.join(CONFIG_DIR, "objectives.yaml"))
@@ -403,7 +437,22 @@ def parse_args():
                         "(reps=3). Pass '' to use the experiment's own benchmark config.")
     p.add_argument("--study-name", default="gazebo_test_study")
     p.add_argument("--storage", default="sqlite:///gazebo_test_study.db")
-    p.add_argument("--n-trials", type=int, default=2)
+    p.add_argument("--n-trials", type=int, default=None,
+                   help="Trials to run (default: 2 for NSGA-II, every combination "
+                        "for grid search).")
+    p.add_argument("--repetitions", type=int, default=None,
+                   help="Override repetitions from experiment_config.yaml.")
+    p.add_argument("--bag-record", action="store_true",
+                   help="Record rosbags during each trial. Off by default (bags "
+                        "cost disk and time), but bag I/O shifts sim timing enough "
+                        "to flip marginal collision outcomes -- so a study whose "
+                        "winner will be judged in the bag-based benchmark must be "
+                        "run WITH this flag or it cannot transfer. See the gaussian "
+                        "v3 vs t50 disagreement in docs/optuna_parameter_tuning.md.")
+    p.add_argument("--sampler", choices=("nsga2", "grid"), default="nsga2")
+    p.add_argument("--population-size", type=int, default=None,
+                   help="NSGA-II population size (default: optuna's 50). Set to "
+                        "~n_trials/4 so a small budget still evolves.")
     p.add_argument("--trial-timeout", type=float, default=1800.0,
                    help="Max seconds for one trial's benchmark before it is killed "
                         "and the trial pruned (guards against Gazebo/tmux hangs). "
@@ -431,14 +480,23 @@ def main():
     print("Objectives:", [(o["name"], o["direction"]) for o in objectives])
     print("Constraints:", [(c["name"], "hard" if c["max_rate"] == 0 else "soft")
                            for c in constraints])
-    print("Search space:", [s["path"] for s in search_space])
+    print("Search space:", [param_name(s) for s in search_space])
 
     # Optuna treats a constraint <= 0 as satisfied; a missing attr (trial errored
     # before evaluation) defaults to infeasible.
     n_con = len(constraints)
-    sampler = optuna.samplers.NSGAIISampler(
-        constraints_func=lambda t: t.user_attrs.get(CONSTRAINTS_KEY, [1.0] * n_con)
-    )
+    if args.sampler == "grid":
+        sampler = optuna.samplers.GridSampler(grid_values(search_space))
+    else:
+        sampler_kwargs = {}
+        if args.population_size:
+            sampler_kwargs["population_size"] = args.population_size
+        sampler = optuna.samplers.NSGAIISampler(
+            constraints_func=lambda t: t.user_attrs.get(
+                CONSTRAINTS_KEY, [1.0] * n_con
+            ),
+            **sampler_kwargs,
+        )
     study = optuna.create_study(
         directions=directions,
         sampler=sampler,
@@ -446,13 +504,26 @@ def main():
         storage=args.storage,
         load_if_exists=True,
     )
+    n_trials = args.n_trials
+    if n_trials is None:
+        n_trials = (math.prod(len(v) for v in grid_values(search_space).values())
+                    if args.sampler == "grid" else 2)
     study.optimize(
         make_objective(args, base_params, search_space, objectives, constraints),
-        n_trials=args.n_trials,
+        n_trials=n_trials,
     )
 
-    print("\nPareto-optimal (feasible) trials:")
-    for t in study.best_trials:
+    if args.sampler == "grid":
+        trials = [
+            t for t in study.get_trials()
+            if t.values is not None
+            and all(v <= 0 for v in t.user_attrs.get(CONSTRAINTS_KEY, [1.0]))
+        ]
+        print("\nCompleted feasible grid trials:")
+    else:
+        trials = study.best_trials
+        print("\nPareto-optimal (feasible) trials:")
+    for t in trials:
         rates = {c["name"]: t.user_attrs.get(f"{c['name']}_rate") for c in constraints}
         print(f"  trial {t.number}: values={t.values} rates={rates}")
         print(f"    params={t.params}")

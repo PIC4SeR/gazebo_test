@@ -31,6 +31,7 @@ install(DIRECTORY
 # Install Python scripts
 install(PROGRAMS
   scripts/optuna_optimization
+  scripts/audit_study
   DESTINATION lib/${PROJECT_NAME}
 )
 

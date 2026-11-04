@@ -22,11 +22,11 @@ objectives:
       - column: path_length
         goal: minimize
         weight: 1.0
-        baseline: 8.67637        # m
+        baseline: 15.4064        # m
       - column: time_to_reach_goal
         goal: minimize
         weight: 1.0
-        baseline: 16.5312        # s
+        baseline: 30.23        # s
 
   # --- Social comfort: social work + spacing + space intrusions -------------
   # The three terms are correlated (|r| 0.6-0.8 in the data) so weights, not
@@ -41,19 +41,19 @@ objectives:
         per: time_to_reach_goal          # row-wise divide -> per-second (∝ per-step)
         goal: minimize
         weight: 1.0
-        baseline: 9.53443
+        baseline: 8.10591
       - name: closest_person_distance
         column: avg_distance_to_closest_person
         goal: maximize                   # larger gap is better -> inverted to a cost
         weight: 0.5
-        baseline: 1.09392                   # m
+        baseline: 1.33608                   # m
       - name: space_intrusions
         columns:                         # summed row-wise
           - intimate_space_intrusions
           - personal_space_intrusions
         goal: minimize
         weight: 1.0
-        baseline: 65.8289
+        baseline: 50.4087
 
 # Failure handling via HARD + SOFT constraints (docs §7.3). Rates are derived
 # from the `result` column and fed to a constrained sampler (NSGAIISampler).
