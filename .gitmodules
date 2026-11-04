@@ -1,0 +1,12 @@
+[submodule "gazebo_experiments"]
+	path = gazebo_experiments
+	url = https://github.com/andreaostuni/gazebo_experiments.git
+	branch = master
+[submodule "gazebo_optimization"]
+	path = gazebo_optimization
+	url = https://github.com/andreaostuni/gazebo_optimization.git
+	branch = master
+[submodule "rviz_social_nav_plugins"]
+	path = rviz_plugins
+	url = https://github.com/andreaostuni/rviz_social_nav_plugins.git
+	branch = master

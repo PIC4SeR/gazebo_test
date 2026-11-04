@@ -19,8 +19,11 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
    ```bash
    cd ~/ros2_ws/src
-   git clone https://github.com/PIC4SeR/gazebo_test
+   git clone --recursive https://github.com/PIC4SeR/gazebo_test
    ```
+
+   `--recursive` also checks out the submodules (see [Packages](#packages)). In an existing
+   clone, run `git submodule update --init` after pulling.
 
 2. Install the required dependencies:
 
@@ -89,6 +92,14 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 - `gazebo_test_cli`: CLI front-end for the framework — the `full_experiment` console script and the native `ros2 gazeboexp` command (with shell tab-completion).
 - ['gazebo_test_dashboard'](gazebo_test_dashboard/README.md): local web page that runs a campaign (experiments × algorithms) as a queue of `gazeboexp run` batches over parallel lanes, with stall teardown, requeue and progress read from the outcomes.
 - ['gazebo_sim'](gazebo_sim/README.md): A package containing Gazebo simulation models and worlds for testing.
+
+Git submodules, each its own repo, mounted at these paths:
+
+- `gazebo_experiments` ([andreaostuni/gazebo_experiments](https://github.com/andreaostuni/gazebo_experiments)): experiment definitions, goals and poses, maps and Nav2 params. Other experiment packages use its maps (`map_pkg_name: gazebo_experiments`).
+- `gazebo_optimization` ([andreaostuni/gazebo_optimization](https://github.com/andreaostuni/gazebo_optimization)): Optuna parameter tuning and `audit_study`, driving `ros2 gazeboexp run`.
+- `rviz_plugins` ([andreaostuni/rviz_social_nav_plugins](https://github.com/andreaostuni/rviz_social_nav_plugins)): the `rviz_people_display` and `rviz_goal_pose_annotator` RViz plugins.
+
+A change in one of them is a commit in that repo, followed by a commit here that moves the submodule pointer.
 
 ## Usage
 
