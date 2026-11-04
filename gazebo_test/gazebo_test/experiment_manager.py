@@ -26,12 +26,15 @@ from gazebo_test.utils.watchdog_monitor import ExperimentWatchdog
 from ament_index_python.packages import get_package_share_directory
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from gazebo_test.utils.checkpoint_store import (
     ExperimentJobCoordinator,
     ExperimentJobHandle,
 )
 from gazebo_test.utils.provenance import write_experiment_provenance
+from gazebo_test.utils.pedestrian_draws import PedestrianDrawTracker
 
 
 class ExperimentManager(Node):
@@ -90,6 +93,27 @@ class ExperimentManager(Node):
         self.use_evaluator = bool(
             self.declare_parameter("use_evaluator", Parameter.Type.BOOL).value
         )
+        # Each episode's pedestrian motion-model draw, published (latched) by
+        # hunav_agent_manager, goes into the outcomes row (ped_* columns): the
+        # pairing key of repeated-measures tests. Empty disables.
+        self._ped_draws = PedestrianDrawTracker()
+        ped_draw_topic = str(
+            self.declare_parameter(
+                "pedestrian_draw_topic", "/hunav_agent_manager/motion_models"
+            ).value
+            or ""
+        ).strip()
+        if ped_draw_topic:
+            self.create_subscription(
+                String,
+                ped_draw_topic,
+                lambda msg: self._ped_draws.on_message(msg.data),
+                QoSProfile(
+                    depth=1,
+                    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                    reliability=ReliabilityPolicy.RELIABLE,
+                ),
+            )
         self.repetitions = int(self.declare_parameter("repetitions", Parameter.Type.INTEGER).value)  # type: ignore
         self.record_maps = bool(
             self.declare_parameter("record_maps", Parameter.Type.BOOL).value
@@ -452,6 +476,11 @@ class ExperimentManager(Node):
                     "result": [result],
                 }
             )
+            draw_columns, draw_warning = self._ped_draws.columns_for_run()
+            if draw_warning:
+                self.get_logger().warning(f"{experiment_tag} run {run_id}: {draw_warning}")
+            for column, value in draw_columns.items():
+                experiment_outcome[column] = [value]
             if self.use_evaluator:
                 hunav_results = self.hunav_evaluator_handler.get_result_df()
                 # Empty when the task never recorded (formation mode) or the
