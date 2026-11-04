@@ -87,6 +87,7 @@ The framework is designed to be used with ROS2 and Gazebo, but can be adapted fo
 
 - ['gazebo_test'](gazebo_test/README.md): The main package containing the test framework and utilities.
 - `gazebo_test_cli`: CLI front-end for the framework — the `full_experiment` console script and the native `ros2 gazeboexp` command (with shell tab-completion).
+- ['gazebo_test_dashboard'](gazebo_test_dashboard/README.md): local web page that runs a campaign (experiments × algorithms) as a queue of `gazeboexp run` batches over parallel lanes, with stall teardown, requeue and progress read from the outcomes.
 - ['gazebo_sim'](gazebo_sim/README.md): A package containing Gazebo simulation models and worlds for testing.
 
 ## Usage
@@ -209,6 +210,7 @@ These ROS parameters can be set via launch arguments or on the command line:
 | `base_path` | `results/gazebo_test` | Root directory for results; the manager appends the checkpoint namespace, algorithm, and experiment name.
 | `use_recorder` / `record_maps` | `false` | Enable bag recording and include map topics.
 | `use_evaluator` | `false` | Enable HuNav evaluator integration.
+| `pedestrian_draw_topic` | `/hunav_agent_manager/motion_models` | Latched topic on which hunav_agent_manager publishes each episode's pedestrian motion models; recorded in the outcomes CSV (below). Empty disables.
 
 Environment variable `GAZEBO_TEST_CHECKPOINT_DSN` provides a fallback for the DSN if the parameter is omitted.
 
@@ -225,6 +227,23 @@ results/
 						metadata.yaml
 						*.db3  (rosbag2 storage)
 ```
+
+Each outcomes row is `experiment_tag, run_id, result`, plus the pedestrian draw
+the run faced when hunav_agent_manager publishes it (`motion_model_strategy`
+random or sweep, hunav_sim fork):
+
+| Column | Meaning |
+| --- | --- |
+| `ped_seed` | `motion_model_seed` (-1: not seeded) |
+| `ped_draw_index` | HuNav episode index: resets so far in this launch |
+| `ped_draw` | `s<seed>_e<index>`: the same draw in every launch with that seed |
+| `ped_models` | `agent1:sfm;agent2:orca`: the models themselves |
+
+They identify which runs of different navigators faced the same pedestrians,
+which is the pairing key of repeated-measures tests
+(`metrics_evaluation --outcomes` carries them to the metrics;
+benchmark_report `statistics.block: ped_draw`). A run whose draw equals the
+previous run's is logged as a warning: its reset never reached the manager.
 
 CSV files are append-only with flock-based locking to prevent concurrent writes. Bag directories are reused per `run_<id>`; existing runs are replaced after a warning.
 

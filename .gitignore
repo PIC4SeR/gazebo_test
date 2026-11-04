@@ -172,3 +172,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+gazebo_test_dashboard/gazebo_test_dashboard/results/*

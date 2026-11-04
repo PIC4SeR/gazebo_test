@@ -1,0 +1,40 @@
+# gazebo_test_dashboard campaign plan: what the campaign runs, and on which lanes.
+# Relative paths are relative to this file: copy it next to where the results
+# should go. Start the dashboard with
+#   gazebo_test_dashboard --plan <this file>
+# Batches are matched by (experiment, algorithm, episodes) when the plan changes:
+# their status, attempts and notes are kept, new ones go to the end of the queue.
+
+results_base_path: results/gazebo_campaign      # --base-path-for-results of every batch
+# state_file: results/gazebo_campaign/dashboard/campaign.csv   # default: <results>/dashboard/campaign.csv
+# exp_config_pkg: benchmark_experiments          # --exp-config-pkg (experiment_config.yaml)
+# Empty: no checkpoint database (--disable-checkpoint, results under no_checkpoint/).
+# Set: passed as --checkpoint-dsn; results under the DSN's namespace folder.
+checkpoint_dsn: ""
+
+# Passed to every `ros2 gazeboexp run`. Do not set --algorithm-name, --ros-domain-id,
+# --base-path-for-results, --repetitions, --episodes, --checkpoint-dsn,
+# --disable-checkpoint or --exp-config-pkg: the dashboard sets them per batch.
+# --resume-checkpoint is always added (a requeued batch runs only what is missing).
+common_args: [--headless, --hunav-eval, --bag-record]
+
+lanes:
+  domains: [11]                # one lane per ROS domain; add domains for parallel lanes
+  stagger_s: 45                # between two lane starts (lanes share generatedWorld.world)
+  batch_timeout_s: 5400        # wall clock per launch, then torn down
+  stall_timeout_s: 900         # no new outcome row for this long (includes start-up)
+  sim_stall_s: 300             # Gazebo sim time not advancing for this long
+  max_attempts: 3              # launches per batch, then failed
+
+algorithms:                    # name = --algorithm-name (results folder); args = its flags
+  - name: dwb
+    args: [--navigator, DWB]
+  - name: mppi
+    args: [--navigator, MPPI]
+
+experiments:                   # gazebo_test experiment ids (ros2 gazeboexp list)
+  - name: social_env_test
+    repetitions: 3
+    # episodes: [episode_1, episode_2]   # subset; default: every episode of the goals file
+    # split_episodes: true               # one batch per episode (shorter launches)
+    # args: []                           # extra flags for this experiment only

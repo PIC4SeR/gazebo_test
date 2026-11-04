@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gazebo_test_dashboard</name>
+  <version>0.0.0</version>
+  <description>Local Flask dashboard that runs a gazebo_test campaign (experiments x
+    algorithms) as a queue of batches, one ros2 gazeboexp run each, over parallel
+    lanes (ROS domains); reads progress, success rates and the pedestrian-draw
+    pairing back from the gazebo_test outcomes, and tears down stalled lanes.</description>
+  <maintainer email="andrea.ostuni@polito.it">Andrea Ostuni</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>python3-flask</exec_depend>
+  <exec_depend>python3-pandas</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>tmux</exec_depend>
+  <exec_depend>gazebo_test</exec_depend>
+  <exec_depend>gazebo_test_cli</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
